@@ -129,7 +129,7 @@ def llm(prompt: str, mem: dict = None) -> str:
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
         json={
-            "model": "llama3-8b-8192",
+            "model": "llama-3.1-8b-instant",
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": prompt}
@@ -165,7 +165,7 @@ Exemple de format attendu : 15.00 ou -3.50 ou 84.00"""
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
         json={
-            "model": "llama3-8b-8192",
+            "model": "llama-3.1-8b-instant",
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 64,
         }
@@ -418,3 +418,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
