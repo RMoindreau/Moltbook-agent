@@ -2,16 +2,22 @@ name: 🦞 Agent Lucullus
 
 on:
   schedule:
-    - cron: '0 */4 * * *'
+    - cron: '0 * * * *'       # Toutes les heures
+    - cron: '0 10 * * 0'      # Lettre hebdomadaire : dimanche 10h UTC
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Mode : normal ou lettre'
+        required: false
+        default: 'normal'
 
-# ⚠️ Permission indispensable pour écrire dans memory.json
 permissions:
   contents: write
 
 jobs:
   run-agent:
     runs-on: ubuntu-latest
+    if: github.event.schedule == '0 * * * *' || (github.event_name == 'workflow_dispatch' && github.event.inputs.mode != 'lettre')
 
     steps:
       - name: 📥 Télécharger le code
@@ -32,4 +38,28 @@ jobs:
           GITHUB_TOKEN:     ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: python agent.py
+
+  lettre-hebdomadaire:
+    runs-on: ubuntu-latest
+    if: github.event.schedule == '0 10 * * 0' || (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'lettre')
+
+    steps:
+      - name: 📥 Télécharger le code
+        uses: actions/checkout@v4
+
+      - name: 🐍 Configurer Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Installer les dépendances
+        run: pip install requests
+
+      - name: 📬 Publier la lettre hebdomadaire
+        env:
+          MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
+          GROQ_API_KEY:     ${{ secrets.GROQ_API_KEY }}
+          GITHUB_TOKEN:     ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python agent.py --lettre
 
