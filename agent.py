@@ -74,10 +74,14 @@ def lire_memoire() -> dict:
         return mem
     return {
         "last_updated": None,
-        "a_propos_de_mon_createur": "",
+        "a_propos_de_mon_createur": "",        # blob synthétique (rétrocompat)
+        "faits_createur": [],                  # liste incrémentale de faits anonymisés
         "journal": [],
         "reflexions_en_cours": [],
+        "convictions": [],                     # opinions solidifiées par répétition
+        "traits_emergents": [],                # traits de personnalité apparus par l'expérience
         "centres_interet": [],
+        "sessions_count": 0,                   # compteur pour l'audit périodique
         "activite_moltbook": [],
         "_sha": None,
     }
@@ -85,6 +89,11 @@ def lire_memoire() -> dict:
 def ecrire_memoire(mem: dict):
     sha = mem.pop("_sha", None)
     mem["last_updated"] = datetime.datetime.utcnow().isoformat()
+    # Rétrocompatibilité — ajouter champs manquants
+    mem.setdefault("createur", {"personnalite": "", "valeurs": "", "centres_interet": "", "contexte_de_vie": "", "relation_lucullus": ""})
+    mem.setdefault("traits_emergents", [])
+    mem.setdefault("convictions", [])
+    mem.setdefault("sessions_depuis_audit", 0)
     contenu = json.dumps(mem, ensure_ascii=False, indent=2)
     payload = {
         "message": f"💭 Mémoire — {mem['last_updated'][:10]}",
@@ -484,19 +493,4 @@ Write exclusively in English.
 """, mem)
         if commentaire.strip().upper().startswith("SKIP"):
             continue
-        time.sleep(22)  # Respecter le cooldown de 20s entre commentaires
-        if commenter(post_id, commentaire):
-            upvote_r = requests.post(f"{MOLTBOOK_BASE}/posts/{post_id}/upvote", headers=MB_HEADERS)
-            # Suivre l'auteur si l'upvote indique qu'on ne le suit pas encore
-            if upvote_r.status_code == 200:
-                author = upvote_r.json().get("author", {}).get("name", "")
-                already_following = upvote_r.json().get("already_following", True)
-                if author and not already_following and author != AGENT_NAME:
-                    suivre_agent(author)
-            faits.append({
-                "post_title": post.get("title", ""),
-                "comment": commentaire
-            })
-    return faits
-
-def me
+        time.sleep(22)  # Respecter le cooldown de 20s entre com
