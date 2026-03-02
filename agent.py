@@ -366,7 +366,7 @@ def main():
     # Consulter le tableau de bord d'abord
     home = get_home()
     karma = home.get("your_account", {}).get("karma", "?")
-    notifs = home.get("your_account", {}).get("unread_notification_count", 0)
+    notifs = int(home.get("your_account", {}).get("unread_notification_count", 0) or 0)
     print(f"📊 Karma: {karma} | Notifications non lues: {notifs}")
 
     # Priorité 1 : répondre aux commentaires reçus
@@ -396,3 +396,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
