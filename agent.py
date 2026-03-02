@@ -156,17 +156,26 @@ def resoudre_defi(challenge_text: str) -> str:
     """
     Moltbook envoie un problème mathématique obfusqué (majuscules alternées,
     symboles parasites) après chaque post/commentaire.
-    On nettoie le texte, on demande à Gemini de résoudre, on retourne la réponse.
     """
-    # Nettoyer les symboles parasites et les majuscules alternées
-    clean = re.sub(r'[\[\]^/\-\\]', ' ', challenge_text)
-    clean = re.sub(r'\s+', ' ', clean).strip().lower()
+    # Étape 1 : supprimer tous les symboles parasites
+    clean = re.sub(r'[\[\]^/\-\\~@#$%*_+=|<>]', ' ', challenge_text)
+    # Étape 2 : mettre tout en minuscules
+    clean = clean.lower()
+    # Étape 3 : fusionner les espaces multiples
+    clean = re.sub(r'\s+', ' ', clean).strip()
+    # Étape 4 : reconstituer les mots collés (ex: "vveelloocciittyy" → répétitions)
+    # Supprimer les lettres répétées consécutives (artefact d'obfuscation)
+    clean = re.sub(r'(\w)\1+', r'\1', clean)
 
-    prompt = f"""Voici un problème mathématique en anglais (mots clés : addition, soustraction, 
-multiplication, division) : "{clean}"
+    prompt = f"""You received an obfuscated math word problem. Here it is, already cleaned up:
+"{clean}"
 
-Résous-le. Réponds UNIQUEMENT avec le résultat numérique, deux décimales, rien d'autre.
-Exemple de format attendu : 15.00 ou -3.50 ou 84.00"""
+Instructions:
+1. Identify the two numbers and the operation (add, subtract, multiply, divide, slow by, increase by, etc.)
+2. Compute the result
+3. Reply with ONLY the numeric result, exactly 2 decimal places, nothing else.
+
+Examples of valid answers: 15.00 or -3.50 or 84.00"""
 
     r2 = requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
