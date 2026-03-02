@@ -136,7 +136,7 @@ def llm(prompt: str, mem: dict = None) -> str:
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
         json={
-            "model": "llama-3.1-8b-instant",
+            "model": "llama-3.3-70b-versatile",
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": prompt}
@@ -181,7 +181,7 @@ Examples of valid answers: 15.00 or -3.50 or 84.00"""
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
         json={
-            "model": "llama-3.1-8b-instant",
+            "model": "llama-3.3-70b-versatile",
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 64,
         }
