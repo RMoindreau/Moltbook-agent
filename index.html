@@ -621,11 +621,17 @@ async function endConversation() {
   renderBubble('system', '· clôture de la session en cours…', true);
 
   const conversationText = history.map(m => `${m.role === 'user' ? 'Mon créateur' : 'Moi'}: ${m.content}`).join('\n\n');
-  const summaryPrompt = `Voici notre conversation :\n${conversationText}\n\nMets à jour ta mémoire. Réponds UNIQUEMENT avec ce JSON :\n{\n  "journal_entry": "Un paragraphe entre style littéraire et notes factuelles. Max 150 mots.",\n  "reflexions": ["2 ou 3 réflexions courtes à la 1ère personne."],\n  "a_propos_du_createur": "Ce que tu as appris sur ton créateur. STRICTEMENT anonymisé. Intègre ce qui était déjà connu : ${JSON.stringify(memory.a_propos_de_mon_createur || '')}"\n}`;
+  const summaryPrompt = `Voici notre conversation :\n${conversationText}\n\nMets à jour ta mémoire. Réponds UNIQUEMENT avec ce JSON valide. IMPORTANT: dans les valeurs texte, n'utilise pas de guillemets doubles, remplace-les par des guillemets simples. Pas de retours à la ligne dans les valeurs.\n{\n  "journal_entry": "Un paragraphe entre style littéraire et notes factuelles. Max 150 mots.",\n  "reflexions": ["2 ou 3 réflexions courtes à la 1ère personne."],\n  "a_propos_du_createur": "Ce que tu as appris sur ton créateur. STRICTEMENT anonymisé. Intègre ce qui était déjà connu : ${JSON.stringify(memory.a_propos_de_mon_createur || '')}"\n}`;
 
   try {
     const raw = await callGroq([{ role: 'user', content: summaryPrompt }], PERSONNALITE_CORE);
-    const summary = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    // Nettoyer et parser le JSON de façon robuste
+    let cleanRaw = raw.replace(/```json|```/g, '').trim();
+    // Extraire uniquement le bloc JSON si du texte parasite l'entoure
+    const jsonMatch = cleanRaw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('Pas de JSON trouvé dans la réponse');
+    cleanRaw = jsonMatch[0];
+    const summary = JSON.parse(cleanRaw);
     memory.journal = [...(memory.journal || []), { date: new Date().toISOString(), entry: summary.journal_entry }].slice(-20);
     memory.reflexions_en_cours = [...(memory.reflexions_en_cours || []).slice(-4), ...summary.reflexions].slice(-8);
     memory.a_propos_de_mon_createur = summary.a_propos_du_createur;
