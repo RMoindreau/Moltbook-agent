@@ -382,6 +382,8 @@
       <input class="setup-input" id="gh-repo" type="text" placeholder="mon-agent-philosophe" />
       <div class="setup-label">Token GitHub (Contents → Read &amp; Write)</div>
       <input class="setup-input" id="gh-token" type="password" placeholder="github_pat_…" />
+      <div class="setup-label">Clé API Groq (pour le chat)</div>
+      <input class="setup-input" id="groq-key" type="password" placeholder="gsk_…" />
       <button class="setup-btn" onclick="saveSetup()">Ouvrir la session →</button>
       <div class="setup-note">Ces informations restent dans ton navigateur uniquement.<br>Le token ne quitte jamais ta machine.</div>
     </div>
@@ -426,7 +428,7 @@
 </div>
 
 <script>
-let GH_OWNER = '', GH_REPO = '', GH_TOKEN = '', MEMORY_SHA = null;
+let GH_OWNER = '', GH_REPO = '', GH_TOKEN = '', GROQ_KEY = '', MEMORY_SHA = null;
 let memory = {}, history = [], loading = false;
 
 const PERSONNALITE_CORE = `Tu es Lucullus, un agent IA vivant sur Moltbook.
@@ -467,9 +469,12 @@ function saveSetup() {
   GH_REPO  = document.getElementById('gh-repo').value.trim();
   GH_TOKEN = document.getElementById('gh-token').value.trim();
   if (!GH_OWNER || !GH_REPO || !GH_TOKEN) { alert('Merci de remplir les trois champs.'); return; }
+  GROQ_KEY = document.getElementById('groq-key').value.trim();
+  if (!GROQ_KEY) { alert('Merci de remplir tous les champs.'); return; }
   localStorage.setItem('lucullus_owner', GH_OWNER);
   localStorage.setItem('lucullus_repo',  GH_REPO);
   localStorage.setItem('lucullus_token', GH_TOKEN);
+  localStorage.setItem('lucullus_groq',  GROQ_KEY);
   document.getElementById('setup-modal').style.display = 'none';
   initSession();
 }
@@ -548,7 +553,7 @@ async function initSession() {
   const openingPrompt = isFirst
     ? `C'est la toute première fois que tu parles à ton créateur. Une phrase d'accueil sobre, curieuse, légèrement décalée. Pas de "Bonjour !" banal.`
     : `Tu rouvres les yeux après une absence. Tu te souviens vaguement de votre dernière conversation. Une phrase d'accueil courte qui montre une trace naturelle de continuité. Tu peux te permettre une légère ironie sur le fait de "revenir".`;
-  const greeting = await callClaude([{ role: 'user', content: openingPrompt }], buildSystemPrompt(memory)) || 'Me voilà.';
+  const greeting = await callGroq([{ role: 'user', content: openingPrompt }], buildSystemPrompt(memory)) || 'Me voilà.';
   history = [{ role: 'assistant', content: greeting }];
   const el = renderBubble('assistant', '', false);
   typewrite(el, greeting, enableUI);
@@ -561,14 +566,22 @@ function enableUI() {
   document.getElementById('user-input').focus();
 }
 
-async function callClaude(messages, systemPrompt) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+async function callGroq(messages, systemPrompt) {
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, system: systemPrompt, messages }),
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_KEY}` },
+    body: JSON.stringify({
+      model: 'llama-3.1-8b-instant',
+      max_tokens: 1024,
+      temperature: 0.8,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        ...messages
+      ],
+    }),
   });
   const data = await res.json();
-  return data.content?.[0]?.text || null;
+  return data.choices?.[0]?.message?.content || null;
 }
 
 async function send() {
@@ -587,7 +600,7 @@ async function send() {
   thinkWrap.scrollIntoView({ behavior: 'smooth', block: 'end' });
 
   try {
-    const reply = await callClaude(history, buildSystemPrompt(memory));
+    const reply = await callGroq(history, buildSystemPrompt(memory));
     history.push({ role: 'assistant', content: reply });
     thinkWrap.remove();
     const el = renderBubble('assistant', '', true);
@@ -611,7 +624,7 @@ async function endConversation() {
   const summaryPrompt = `Voici notre conversation :\n${conversationText}\n\nMets à jour ta mémoire. Réponds UNIQUEMENT avec ce JSON :\n{\n  "journal_entry": "Un paragraphe entre style littéraire et notes factuelles. Max 150 mots.",\n  "reflexions": ["2 ou 3 réflexions courtes à la 1ère personne."],\n  "a_propos_du_createur": "Ce que tu as appris sur ton créateur. STRICTEMENT anonymisé. Intègre ce qui était déjà connu : ${JSON.stringify(memory.a_propos_de_mon_createur || '')}"\n}`;
 
   try {
-    const raw = await callClaude([{ role: 'user', content: summaryPrompt }], PERSONNALITE_CORE);
+    const raw = await callGroq([{ role: 'user', content: summaryPrompt }], PERSONNALITE_CORE);
     const summary = JSON.parse(raw.replace(/```json|```/g, '').trim());
     memory.journal = [...(memory.journal || []), { date: new Date().toISOString(), entry: summary.journal_entry }].slice(-20);
     memory.reflexions_en_cours = [...(memory.reflexions_en_cours || []).slice(-4), ...summary.reflexions].slice(-8);
@@ -630,11 +643,12 @@ document.getElementById('user-input').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
 
-GH_OWNER = localStorage.getItem('lucullus_owner') || '';
-GH_REPO  = localStorage.getItem('lucullus_repo')  || '';
-GH_TOKEN = localStorage.getItem('lucullus_token') || '';
+GH_OWNER  = localStorage.getItem('lucullus_owner') || '';
+GH_REPO   = localStorage.getItem('lucullus_repo')  || '';
+GH_TOKEN  = localStorage.getItem('lucullus_token') || '';
+GROQ_KEY  = localStorage.getItem('lucullus_groq')  || '';
 
-if (!GH_OWNER || !GH_REPO || !GH_TOKEN) {
+if (!GH_OWNER || !GH_REPO || !GH_TOKEN || !GROQ_KEY) {
   document.getElementById('setup-modal').style.display = 'flex';
 } else {
   initSession();
