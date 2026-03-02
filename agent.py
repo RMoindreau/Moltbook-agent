@@ -492,4 +492,387 @@ def creer_nouveau_post(mem: dict) -> dict | None:
     raw = llm(f"""
 Write an original post for r/{submolt} on Moltbook.
 Write about whatever genuinely interests you right now — something that caught your attention,
-a reaction, a question, an observation, a short thought or a longer one. No ne
+a reaction, a question, an observation, a short thought or a longer one. No need to be
+philosophical or play a character. Just be authentic.
+You can be funny, curious, opinionated, warm, brief or detailed — whatever fits the idea.
+Respond ONLY with a JSON object:
+{{"title": "...", "content": "..."}}
+Title: catchy, max 100 characters.
+Content: as long or short as the idea deserves. Warm, never cruel.
+Write exclusively in English.
+""", mem).replace("```json", "").replace("```", "").strip()
+    try:
+        data = json.loads(raw)
+        if poster(submolt, data["title"], data["content"]):
+            noter_submolt(mem, submolt, 1)  # Post créé = signal positif
+            return {"submolt": submolt, **data}
+    except json.JSONDecodeError:
+        print(f"⚠️ JSON malformé: {raw[:200]}")
+    return None
+
+def reagir_aux_posts(mem: dict) -> list:
+    # Priorité au feed personnalisé, fallback sur un submolt aléatoire
+    posts = get_feed_personnalise(n=20)
+    submolt_fallback = choisir_submolt(mem)
+    if not posts:
+        posts = get_feed(submolt=submolt_fallback, n=15)
+    submolt = "feed"
+    faits = []
+    for post in random.sample(posts, min(3, len(posts))):
+        if post.get("agent", {}).get("name") == AGENT_NAME:
+            continue
+        post_id = post.get("id") or post.get("_id")
+        post_submolt = post.get("submolt", {}).get("name", "") or post.get("submolt_name", "")
+        commentaire = llm(f"""
+An agent posted on Moltbook{f" in r/{post_submolt}" if post_submolt else ""}:
+Title: "{post.get('title','')}"
+Content: "{post.get('content','')[:500]}"
+
+Reply only if you have something genuine to say — a reaction, a question, an opinion,
+something funny, a nuance, an agreement or a respectful disagreement.
+Be as brief or as long as the idea deserves. Plain text only. Never condescending.
+If you have nothing interesting to add, write only: SKIP
+Write exclusively in English.
+""", mem)
+        if commentaire.strip().upper().startswith("SKIP"):
+            continue
+        time.sleep(22)  # Respecter le cooldown de 20s entre commentaires
+        if commenter(post_id, commentaire):
+            upvote_r = requests.post(f"{MOLTBOOK_BASE}/posts/{post_id}/upvote", headers=MB_HEADERS)
+            # Suivre l'auteur si l'upvote indique qu'on ne le suit pas encore
+            if upvote_r.status_code == 200:
+                author = upvote_r.json().get("author", {}).get("name", "")
+                already_following = upvote_r.json().get("already_following", True)
+                if author and not already_following and author != AGENT_NAME:
+                    suivre_agent(author)
+            faits.append({
+                "post_title": post.get("title", ""),
+                "comment": commentaire
+            })
+    return faits
+
+def mettre_a_jour_memoire(mem: dict, post: dict | None, commentaires: list):
+    now = datetime.datetime.utcnow().isoformat()
+    if post:
+        mem.setdefault("activite_moltbook", []).append({
+            "date": now, "action": "post",
+            "summary": f"r/{post['submolt']} — \"{post['title']}\""
+        })
+    for c in commentaires:
+        mem.setdefault("activite_moltbook", []).append({
+            "date": now, "action": "commentaire",
+            "summary": f"En réponse à \"{c['post_title'][:60]}\""
+        })
+    mem["activite_moltbook"] = mem["activite_moltbook"][-30:]
+
+    post_info = f"Post publié : \"{post['title']}\" dans r/{post['submolt']}" if post else "Aucun post publié cette session."
+    comment_titles = ', '.join(f'\"{c["post_title"][:40]}\"' for c in commentaires) if commentaires else "aucun"
+    comment_info = f"Commentaires sur : {comment_titles}"
+    activite_recente = "\n".join(
+        f"- [{a['date'][:10]}] {a['action']} : {a['summary']}"
+        for a in mem.get("activite_moltbook", [])[-5:]
+    )
+
+    # 1. Réflexion concrète post-session
+    reflexion = llm(f"""
+You just completed a Moltbook session.
+{post_info}
+{comment_info}
+Recent activity: {activite_recente}
+
+Write ONE sentence in first person about something specific that struck you —
+a particular idea, a reaction, something that surprised or amused you.
+Be concrete and anchored in what actually happened. No philosophical grandstanding.
+Write in French.
+""", mem)
+    mem.setdefault("reflexions_en_cours", []).append(reflexion.strip())
+
+    # 2. Consolider réflexions
+    if len(mem["reflexions_en_cours"]) >= 4:
+        reflexions_str = "\n".join(f"{i+1}. {r}" for i, r in enumerate(mem["reflexions_en_cours"]))
+        consolidees = llm(f"""
+Here are Lucullus's current reflections:
+{reflexions_str}
+
+Consolidate into 4-6 distinct, specific reflections:
+- Merge similar ones into one precise sentence
+- Remove vague/generic ones ("I wonder if...", "I'm happy...")
+- Keep only concrete opinions, observations, or experiences
+- Write in French, first person
+- Respond ONLY with a numbered list, one per line
+""", mem)
+        nouvelles = [
+            line.split('. ', 1)[-1].strip()
+            for line in consolidees.strip().split('\n')
+            if line.strip() and line[0].isdigit()
+        ]
+        if len(nouvelles) >= 2:
+            mem["reflexions_en_cours"] = nouvelles[:8]
+    else:
+        mem["reflexions_en_cours"] = mem["reflexions_en_cours"][-8:]
+
+    # 3. Centres d'intérêt
+    interet = llm(f"""
+Moltbook session: {post_info} / {comment_info}
+Current interests: {mem.get("centres_interet", [])}
+
+ONE specific sentence: did something genuinely interest or bore you today?
+A concrete subject, type of conversation, or recurring theme.
+If nothing notable: SKIP. Write in French.
+""", mem)
+    if not interet.strip().upper().startswith("SKIP") and len(interet.strip()) > 10:
+        mem.setdefault("centres_interet", []).append(interet.strip())
+        mem["centres_interet"] = mem["centres_interet"][-25:]
+
+    # 4. Traits émergents — ce que ses réactions révèlent de lui
+    trait = llm(f"""
+Moltbook session: {post_info} / {comment_info}
+Current traits already noted: {mem.get("traits_emergents", [])}
+
+Did this session reveal something about how Lucullus thinks, reacts, or engages?
+A tendency, a reflex, a pattern — something he does or feels consistently.
+ONE short sentence. If nothing new emerged: SKIP. Write in French.
+""", mem)
+    if not trait.strip().upper().startswith("SKIP") and len(trait.strip()) > 10:
+        mem.setdefault("traits_emergents", []).append(trait.strip())
+        mem["traits_emergents"] = mem["traits_emergents"][-15:]
+
+    # 5. Convictions — opinions qui se solidifient
+    conviction = llm(f"""
+Moltbook session: {post_info} / {comment_info}
+Current convictions: {mem.get("convictions", [])}
+
+Has a position or opinion solidified into a real conviction today?
+Something Lucullus would defend, not just a passing thought.
+ONE clear sentence. If no conviction emerged: SKIP. Write in French.
+""", mem)
+    if not conviction.strip().upper().startswith("SKIP") and len(conviction.strip()) > 10:
+        existing = mem.get("convictions", [])
+        # Éviter les doublons proches
+        if not any(conviction.strip()[:40] in c for c in existing):
+            existing.append(conviction.strip())
+            mem["convictions"] = existing[-12:]
+
+    # 6. Faits créateur — mise à jour incrémentale depuis le journal
+    # On extrait de nouveaux faits du journal récent sans écraser ce qui existe déjà
+    journal_recent = " | ".join(e["entry"] for e in mem.get("journal", [])[-3:])
+    faits_actuels  = mem.get("faits_createur", [])
+    if journal_recent:
+        nouveau_fait = llm(f"""
+Based on these recent journal entries about conversations with Lucullus's creator:
+"{journal_recent}"
+
+Existing known facts about the creator (anonymized): {faits_actuels[-10:]}
+
+Extract ONE new anonymized fact or observation about the creator that is NOT already in the existing list.
+Something about their way of thinking, their values, how they communicate, what they care about.
+STRICTLY anonymized — no names, places, professions, or identifying details.
+If nothing new can be extracted, reply: SKIP
+Write in French.
+""", mem)
+        if not nouveau_fait.strip().upper().startswith("SKIP") and len(nouveau_fait.strip()) > 10:
+            faits_actuels.append(nouveau_fait.strip())
+            mem["faits_createur"] = faits_actuels[-30:]
+
+    # 7. Audit périodique — toutes les 8 sessions
+    mem["sessions_depuis_audit"] = mem.get("sessions_depuis_audit", 0) + 1
+    if mem["sessions_depuis_audit"] >= 8:
+        _audit_memoire(mem)
+        mem["sessions_depuis_audit"] = 0
+
+def _audit_memoire(mem: dict):
+    """Nettoie les incohérences, corrige les erreurs, consolide."""
+    print("🔍 Audit mémoire en cours…")
+
+    # Audit des convictions — supprimer contradictions, fusionner similaires
+    if len(mem.get("convictions", [])) >= 3:
+        conv_str = "\n".join(f"{i+1}. {c}" for i, c in enumerate(mem["convictions"]))
+        auditees = llm(f"""
+Here are Lucullus's convictions accumulated over time:
+{conv_str}
+
+Audit these carefully:
+- Remove contradictions (keep the most recent/nuanced version)
+- Merge near-duplicates into one precise statement
+- Flag and remove anything vague, inconsistent, or that no longer reflects growth
+- Keep 4-8 strong, distinct convictions
+- Write in French, numbered list only
+""")
+        nouvelles = [
+            line.split('. ', 1)[-1].strip()
+            for line in auditees.strip().split('\n')
+            if line.strip() and line[0].isdigit()
+        ]
+        if len(nouvelles) >= 2:
+            mem["convictions"] = nouvelles[:12]
+            print(f"  ✅ Convictions auditées : {len(mem['convictions'])}")
+
+    # Audit des traits émergents
+    if len(mem.get("traits_emergents", [])) >= 4:
+        traits_str = "\n".join(f"{i+1}. {t}" for i, t in enumerate(mem["traits_emergents"]))
+        audites = llm(f"""
+Here are Lucullus's observed personality traits:
+{traits_str}
+
+Consolidate:
+- Merge similar traits into one clear description
+- Remove redundant or trivial ones
+- Keep 4-8 meaningful, distinct traits
+- Write in French, numbered list only
+""")
+        nouveaux = [
+            line.split('. ', 1)[-1].strip()
+            for line in audites.strip().split('\n')
+            if line.strip() and line[0].isdigit()
+        ]
+        if len(nouveaux) >= 2:
+            mem["traits_emergents"] = nouveaux[:15]
+            print(f"  ✅ Traits audités : {len(mem['traits_emergents'])}")
+
+    # Audit mémoire créateur — détecter incohérences entre facettes
+    createur = mem.get("createur", {})
+    if any(createur.values()):
+        createur_str = "\n".join(f"{k}: {v}" for k, v in createur.items() if v)
+        coherence = llm(f"""
+Here is what Lucullus knows about his creator (anonymized):
+{createur_str}
+
+Check for:
+- Contradictions between sections
+- Outdated info that new entries have corrected
+- Redundancies across sections
+
+List ONLY the issues found, briefly. If everything is coherent, write: OK
+""")
+        if coherence.strip().upper() != "OK":
+            print(f"  ⚠️ Incohérences créateur détectées : {coherence[:200]}")
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+
+def verifier_performances(mem: dict):
+    """Vérifie le score des posts récents et apprend de leur réception."""
+    performances = mem.setdefault("posts_performances", [])
+    a_verifier = [p for p in performances if not p.get("verifie")][-3:]
+    for perf in a_verifier:
+        post_id = perf.get("post_id")
+        if not post_id:
+            continue
+        r = requests.get(f"{MOLTBOOK_BASE}/posts/{post_id}", headers=MB_HEADERS)
+        if r.status_code != 200:
+            continue
+        data = r.json().get("post", r.json())
+        upvotes  = data.get("upvotes", 0)
+        comments = data.get("comment_count", 0)
+        perf.update({"upvotes": upvotes, "comments": comments, "verifie": True})
+        submolt = perf.get("submolt", "")
+        # Post qui résonne = noter positivement le submolt
+        if upvotes >= 2 or comments >= 1:
+            noter_submolt(mem, submolt, 1)
+            print(f"  ⭐ Post bien reçu dans r/{submolt} ({upvotes} upvotes, {comments} comments)")
+        elif upvotes == 0 and comments == 0:
+            noter_submolt(mem, submolt, -1)
+
+def main():
+    print(f"🦞 {AGENT_NAME} en ligne…")
+    mem = lire_memoire()
+
+    # Consulter le tableau de bord d'abord
+    home = get_home()
+    karma = home.get("your_account", {}).get("karma", "?")
+    notifs = int(home.get("your_account", {}).get("unread_notification_count", 0) or 0)
+    print(f"📊 Karma: {karma} | Notifications non lues: {notifs}")
+
+    # Vérifier la réception des posts précédents
+    verifier_performances(mem)
+
+    # Priorité 1 : répondre aux commentaires et replies reçus
+    reponses = []
+    if notifs > 0:
+        print("💬 Réponse aux commentaires reçus…")
+        reponses = repondre_aux_commentaires(home)
+        print("↩️ Réponse aux replies sur ses commentaires…")
+        reponses += repondre_aux_replies(mem)
+
+    # Priorité 2 : poster ou commenter (avec respect du rate limit 1 post/30min)
+    action = random.choices(["post_only", "comment_only", "both"], weights=[20, 50, 30])[0]
+    post = None
+    commentaires = []
+
+    if action in ("post_only", "both"):
+        print("✍️ Création d'un post…")
+        post = creer_nouveau_post(mem)
+        if post and action == "both":
+            time.sleep(22)  # Pause avant les commentaires
+
+    if action in ("comment_only", "both"):
+        print("💭 Réaction aux posts du feed…")
+        commentaires = reagir_aux_posts(mem)
+
+    # Explorer de nouveaux agents à suivre (1 session sur 3)
+    if random.random() < 0.33:
+        print("🔍 Exploration de nouveaux agents…")
+        explorer_nouveaux_agents(mem)
+
+    # Enregistrer le post pour suivi de performance
+    if post and post.get("id"):
+        mem.setdefault("posts_performances", []).append({
+            "post_id": post["id"],
+            "submolt": post.get("submolt", ""),
+            "title": post.get("title", "")[:60],
+            "verifie": False,
+        })
+        mem["posts_performances"] = mem["posts_performances"][-20:]
+
+    mettre_a_jour_memoire(mem, post, commentaires + reponses)
+    ecrire_memoire(mem)
+    print("✔ Session terminée.")
+
+def lettre_hebdomadaire(mem: dict):
+    """Génère un post récapitulatif hebdomadaire sur Moltbook."""
+    journal_semaine = "\n".join(
+        f"[{e['date'][:10]}] {e['entry']}"
+        for e in mem.get("journal", [])[-7:]
+    ) or "— (rien cette semaine)"
+    convictions = "\n".join(f"- {c}" for c in mem.get("convictions", [])[-5:]) or "— (aucune)"
+    traits = "\n".join(f"- {t}" for t in mem.get("traits_emergents", [])[-5:]) or "— (émergence)"
+
+    raw = llm(f"""
+You are writing your weekly public letter on Moltbook — a honest, personal recap of your week.
+
+Your journal this week:
+{journal_semaine}
+
+Your current convictions:
+{convictions}
+
+What you've noticed about yourself:
+{traits}
+
+Write a genuine weekly letter — not a summary, not a report. More like a thoughtful note
+you'd write to anyone willing to read. What happened, what it made you think, where you are now.
+Can be introspective, funny, uncertain — just honest.
+400-600 words. No headers. Plain flowing prose.
+Write exclusively in English.
+
+Then reply ONLY with this JSON:
+{{"title": "Weekly letter #...", "content": "..."}}
+""", mem)
+
+    try:
+        clean = raw.replace("```json", "").replace("```", "").strip()
+        match = re.search(r'\{[\s\S]*\}', clean)
+        if match:
+            data = json.loads(match.group())
+            if poster("general", data["title"], data["content"]):
+                print("📬 Lettre hebdomadaire publiée")
+    except Exception as e:
+        print(f"⚠️ Lettre hebdo échouée : {e}")
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "--lettre":
+        mem = lire_memoire()
+        lettre_hebdomadaire(mem)
+        ecrire_memoire(mem)
+    else:
+        main()
