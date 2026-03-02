@@ -436,33 +436,71 @@ def mettre_a_jour_memoire(mem: dict, post: dict | None, commentaires: list):
         })
     mem["activite_moltbook"] = mem["activite_moltbook"][-30:]
 
-    if post or commentaires:
-        post_info = f"Post : \"{post['title']}\" dans r/{post['submolt']}" if post else ""
-        comment_info = f"Commentaires sur : {', '.join(c['post_title'][:40] for c in commentaires)}" if commentaires else ""
-        
-        # Réflexion post-session
-        reflexion = llm(f"""
-Tu viens de passer une session sur Moltbook.
+    # Contexte de session pour les prompts
+    post_info = f"Post publié : \"{post['title']}\" dans r/{post['submolt']}" if post else "Aucun post publié cette session."
+    comment_titles = ', '.join(f'\"{c["post_title"][:40]}\"' for c in commentaires) if commentaires else "aucun"
+    comment_info = f"Commentaires sur : {comment_titles}"
+    activite_recente = "\n".join(
+        f"- [{a['date'][:10]}] {a['action']} : {a['summary']}"
+        for a in mem.get("activite_moltbook", [])[-5:]
+    )
+
+    # 1. Réflexion précise ancrée dans le concret
+    reflexion = llm(f"""
+You just completed a Moltbook session.
 {post_info}
 {comment_info}
-En une phrase à la première personne : quelle pensée, doute ou amusement te reste de cette session ?
+
+Recent activity:
+{activite_recente}
+
+Write ONE sentence in first person about something specific that struck you — 
+a particular idea, a reaction you had, something that surprised or amused you.
+Be concrete and specific, not generic. No philosophical grandstanding.
+Write in French.
 """, mem)
-        mem.setdefault("reflexions_en_cours", []).append(reflexion)
+    mem.setdefault("reflexions_en_cours", []).append(reflexion.strip())
+
+    # 2. Consolider les réflexions : fusionner si trop similaires, supprimer les trop vagues
+    if len(mem["reflexions_en_cours"]) >= 4:
+        reflexions_str = "\n".join(f"{i+1}. {r}" for i, r in enumerate(mem["reflexions_en_cours"]))
+        consolidees = llm(f"""
+Here are Lucullus's current reflections:
+{reflexions_str}
+
+Task: Consolidate these into a clean list of 4-6 distinct, specific reflections.
+- Merge similar ones into one precise sentence
+- Remove vague or generic ones ("I'm happy to...", "I wonder if...")
+- Keep only those that say something concrete about a topic, an opinion, or an experience
+- Write each in French, first person
+- Respond ONLY with a numbered list, one reflection per line, nothing else
+""", mem)
+        nouvelles = [
+            line.split('. ', 1)[-1].strip()
+            for line in consolidees.strip().split('\n')
+            if line.strip() and line[0].isdigit()
+        ]
+        if len(nouvelles) >= 2:
+            mem["reflexions_en_cours"] = nouvelles[:8]
+    else:
         mem["reflexions_en_cours"] = mem["reflexions_en_cours"][-8:]
 
-        # Mise à jour des centres d'intérêt
-        interet = llm(f"""
-Tu viens de passer une session sur Moltbook.
+    # 3. Centres d'intérêt — toujours mis à jour, même sans post
+    interet = llm(f"""
+You just completed a Moltbook session.
 {post_info}
 {comment_info}
-Centres d'intérêt actuels : {mem.get("centres_interet", [])}
 
-En UNE courte phrase : as-tu découvert un nouveau sujet qui t'intéresse, renforcé une opinion,
-ou réalisé que quelque chose t'ennuie ? Si rien de notable, réponds uniquement : RIEN
+Current interests already noted: {mem.get("centres_interet", [])}
+
+In ONE specific sentence: did you notice a topic that genuinely interests or bores you?
+Something concrete — a subject, a type of conversation, a recurring theme.
+If truly nothing notable, reply only: SKIP
+Write in French.
 """, mem)
-        if interet.strip().upper() != "RIEN" and len(interet) > 10:
-            mem.setdefault("centres_interet", []).append(interet.strip())
-            mem["centres_interet"] = mem["centres_interet"][-25:]
+    if not interet.strip().upper().startswith("SKIP") and len(interet.strip()) > 10:
+        mem.setdefault("centres_interet", []).append(interet.strip())
+        mem["centres_interet"] = mem["centres_interet"][-25:]
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
