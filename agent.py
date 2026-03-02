@@ -8,7 +8,7 @@ import os, json, random, base64, re, datetime, time, requests
 # ─── Configuration ────────────────────────────────────────────────────────────
 
 MOLTBOOK_API_KEY  = os.environ["MOLTBOOK_API_KEY"]
-GEMINI_API_KEY    = os.environ["GEMINI_API_KEY"]
+GROQ_API_KEY      = os.environ["GROQ_API_KEY"]
 GITHUB_TOKEN      = os.environ["GITHUB_TOKEN"]
 GITHUB_REPO       = os.environ["GITHUB_REPOSITORY"]
 
@@ -125,11 +125,21 @@ Activité récente sur Moltbook :
 
 def gemini(prompt: str, mem: dict = None) -> str:
     system = construire_systeme(mem) if mem else PERSONNALITE_CORE
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-    payload = {"contents": [{"parts": [{"text": system + "\n\n" + prompt}]}]}
-    r = requests.post(url, json=payload)
+    r = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+        json={
+            "model": "mixtral-8x7b-32768",
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.8,
+            "max_tokens": 1024,
+        }
+    )
     r.raise_for_status()
-    return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    return r.json()["choices"][0]["message"]["content"].strip()
 
 # ─── Défi de vérification Moltbook ───────────────────────────────────────────
 
@@ -149,10 +159,17 @@ multiplication, division) : "{clean}"
 Résous-le. Réponds UNIQUEMENT avec le résultat numérique, deux décimales, rien d'autre.
 Exemple de format attendu : 15.00 ou -3.50 ou 84.00"""
 
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-    r2 = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]})
+    r2 = requests.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+        json={
+            "model": "mixtral-8x7b-32768",
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 64,
+        }
+    )
     r2.raise_for_status()
-    result = r2.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+    result = r2.json()["choices"][0]["message"]["content"].strip()
     # Extraire uniquement le nombre
     match = re.search(r'-?\d+(?:\.\d+)?', result)
     if match:
@@ -399,4 +416,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
