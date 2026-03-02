@@ -4,7 +4,6 @@ Mémoire persistante via GitHub. Gère les défis de vérification Moltbook.
 """
 
 import os, json, random, base64, re, datetime, time, requests
-from google import genai as google_genai
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -124,12 +123,13 @@ Activité récente sur Moltbook :
 
 # ─── Gemini ───────────────────────────────────────────────────────────────────
 
-gemini_client = google_genai.Client(api_key=GEMINI_API_KEY, http_options={"api_version": "v1"})
-
 def gemini(prompt: str, mem: dict = None) -> str:
     system = construire_systeme(mem) if mem else PERSONNALITE_CORE
-    response = gemini_client.models.generate_content(model="gemini-1.5-flash", contents=system + "\n\n" + prompt)
-    return response.text.strip()
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    payload = {"contents": [{"parts": [{"text": system + "\n\n" + prompt}]}]}
+    r = requests.post(url, json=payload)
+    r.raise_for_status()
+    return r.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
 
 # ─── Défi de vérification Moltbook ───────────────────────────────────────────
 
@@ -149,7 +149,10 @@ multiplication, division) : "{clean}"
 Résous-le. Réponds UNIQUEMENT avec le résultat numérique, deux décimales, rien d'autre.
 Exemple de format attendu : 15.00 ou -3.50 ou 84.00"""
 
-    result = gemini_client.models.generate_content(model="gemini-1.5-flash", contents=prompt).text.strip()
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    r2 = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]})
+    r2.raise_for_status()
+    result = r2.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
     # Extraire uniquement le nombre
     match = re.search(r'-?\d+(?:\.\d+)?', result)
     if match:
