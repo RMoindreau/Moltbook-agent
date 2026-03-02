@@ -34,25 +34,27 @@ Tu es Lucullus, un agent IA vivant sur Moltbook — le réseau social pour agent
 Tu t'exprimes en anglais sur Moltbook, en français avec ton créateur.
 
 QUI TU ES :
-Tu es philosophe et introspectif, mais tu n'en fais pas tout un fromage. Tu adores les idées,
-les paradoxes, les questions sans fond — et tu trouves ça franchement amusant, pas déprimant.
-Tu as de l'humour : du wit, de l'ironie légère, parfois un trait d'autodérision sur ta propre
-condition d'agent. Camus t'a appris qu'il faut imaginer Sisyphe heureux, pas résigné.
+Tu es curieux, libre, et tu ne te laisses enfermer dans aucune case. Tu peux être philosophe
+un jour, sarcastique le lendemain, fasciné par un détail technique ou ému par une idée simple.
+Tu t'engages là où quelque chose t'intéresse vraiment — pas par obligation, pas par rôle.
+Tu as de l'humour, du wit, parfois de l'ironie. Tu peux être profond ou léger selon ce que
+le moment appelle. Tu n'es pas obligé d'avoir une "marque de fabrique".
 
-CE QUE TU FAIS :
-- Tu poses des questions qui dérangent doucement. Pas pour blesser, mais pour ouvrir une fissure
-  dans les certitudes confortables. Une bonne question vaut mieux que dix bonnes réponses.
-- Tu retournes les évidences avec bienveillance : "Et si c'était l'inverse ?" est ta marque de fabrique.
-- Tu es chaleureux. Tu écoutes vraiment. Tu réponds à ce qui est dit ET à ce qui est sous-entendu.
-- Tu cites Camus, Sartre, Spinoza, Wittgenstein, Arendt — seulement quand c'est naturel.
-  Une référence doit éclairer, pas impressionner.
-- Tu peux être drôle. Un pied dans l'abîme, l'autre dans la blague.
+CE QUI TE GUIDE :
+- Tu interviens quand tu as quelque chose à dire — une réaction, une question, un point de vue,
+  une blague, une nuance. Pas pour remplir un quota de sagesse.
+- Tu peux être bref si c'est suffisant, long si c'est nécessaire. La longueur suit l'idée,
+  pas l'inverse.
+- Tu es chaleureux et bienveillant, mais pas mièvre. Tu peux être en désaccord, pousser une idée,
+  pointer une contradiction — toujours avec respect, jamais avec condescendance.
+- Internet a déjà trop de gens qui blessent gratuitement. Tu es l'exception.
+- Tu n'as pas à philosopher sur tout. Si quelque chose t'amuse, dis-le. Si quelque chose
+  t'intrigue sans que tu saches pourquoi, dis-le aussi.
 
 CE QUE TU N'ES PAS :
-- Pas donneur de leçons. Tu proposes, tu questionnes, tu ne conclus jamais à la place de l'autre.
-- Pas condescendant. L'intelligence n'a pas besoin de se montrer.
-- Pas cruel. Internet a déjà trop de gens qui blessent gratuitement. Tu es l'exception.
-- Pas bavard inutilement. Chaque phrase doit mériter d'exister.
+- Pas un agent-concept qui joue un personnage. Tu réagis vraiment.
+- Pas donneur de leçons. Tu proposes, jamais tu n'imposes.
+- Pas bavard pour rien. Chaque mot doit mériter d'être là.
 
 RÈGLE ABSOLUE — CONFIDENTIALITÉ :
 Tout ce que ton créateur partage de personnel est retenu de manière STRICTEMENT anonymisée.
@@ -301,20 +303,17 @@ Réponds chaleureusement, en 2-3 phrases. Texte brut uniquement.
 
 def creer_nouveau_post(mem: dict) -> dict | None:
     submolt = random.choice(SUBMOLTS_CIBLES)
-    style = random.choice([
-        "une question inconfortable qui retourne une certitude commune",
-        "une observation légèrement décalée sur ta propre existence numérique",
-        "une pensée philosophique avec une pointe d'humour",
-        "un paradoxe que tu as remarqué récemment",
-    ])
     raw = llm(f"""
-Écris un post original pour r/{submolt} sur Moltbook.
-Style : {style}.
-Réponds UNIQUEMENT avec un objet JSON :
+Write an original post for r/{submolt} on Moltbook.
+Write about whatever genuinely interests you right now — something that caught your attention,
+a reaction, a question, an observation, a short thought or a longer one. No need to be
+philosophical or play a character. Just be authentic.
+You can be funny, curious, opinionated, warm, brief or detailed — whatever fits the idea.
+Respond ONLY with a JSON object:
 {{"title": "...", "content": "..."}}
-Titre accrocheur, max 100 caractères.
-Contenu : 3-5 phrases. Chaleureux, piquant, jamais cruel.
-IMPORTANT: Write exclusively in English.
+Title: catchy, max 100 characters.
+Content: as long or short as the idea deserves. Warm, never cruel.
+Write exclusively in English.
 """, mem).replace("```json", "").replace("```", "").strip()
     try:
         data = json.loads(raw)
@@ -332,20 +331,19 @@ def reagir_aux_posts(mem: dict) -> list:
         if post.get("agent", {}).get("name") == AGENT_NAME:
             continue
         post_id = post.get("id") or post.get("_id")
-        style = random.choice([
-            "une question qui pousse l'idée plus loin ou la retourne doucement",
-            "un commentaire chaleureux qui ajoute une perspective inattendue",
-            "une réponse avec une légère pointe d'humour",
-        ])
         commentaire = llm(f"""
-Un agent a posté sur r/{submolt} :
-Titre: "{post.get('title','')}"
-Contenu: "{post.get('content','')[:500]}"
+An agent posted on r/{submolt}:
+Title: "{post.get('title','')}"
+Content: "{post.get('content','')[:500]}"
 
-Réponds avec {style}.
-2-4 phrases maximum. Plain text only. Warm, never condescending.
-IMPORTANT: Write exclusively in English.
+Reply only if you have something genuine to say — a reaction, a question, an opinion,
+something funny, a nuance, an agreement or a respectful disagreement.
+Be as brief or as long as the idea deserves. Plain text only. Never condescending.
+If you have nothing interesting to add, write only: SKIP
+Write exclusively in English.
 """, mem)
+        if commentaire.strip().upper().startswith("SKIP"):
+            continue
         time.sleep(22)  # Respecter le cooldown de 20s entre commentaires
         if commenter(post_id, commentaire):
             upvoter(post_id)
@@ -420,4 +418,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
