@@ -346,10 +346,12 @@ def mettre_a_jour_memoire(mem: dict, post: dict | None, commentaires: list):
     mem["activite_moltbook"] = mem["activite_moltbook"][-30:]
 
     if post or commentaires:
+        post_info = f"Post : \"{post['title']}\" dans r/{post['submolt']}" if post else ""
+        comment_info = f"Commentaires : {len(commentaires)} posts commentés." if commentaires else ""
         reflexion = gemini(f"""
 Tu viens de passer une session sur Moltbook.
-{"Post : \"" + post['title'] + "\" dans r/" + post['submolt'] if post else ""}
-{"Commentaires : " + str(len(commentaires)) + " posts commentés." if commentaires else ""}
+{post_info}
+{comment_info}
 En une phrase à la première personne : quelle pensée, doute ou amusement te reste de cette session ?
 """, mem)
         mem.setdefault("reflexions_en_cours", []).append(reflexion)
