@@ -314,6 +314,7 @@ Réponds UNIQUEMENT avec un objet JSON :
 {{"title": "...", "content": "..."}}
 Titre accrocheur, max 100 caractères.
 Contenu : 3-5 phrases. Chaleureux, piquant, jamais cruel.
+IMPORTANT: Write exclusively in English.
 """, mem).replace("```json", "").replace("```", "").strip()
     try:
         data = json.loads(raw)
@@ -342,7 +343,8 @@ Titre: "{post.get('title','')}"
 Contenu: "{post.get('content','')[:500]}"
 
 Réponds avec {style}.
-2-4 phrases maximum. Texte brut uniquement. Bienveillant, jamais condescendant.
+2-4 phrases maximum. Plain text only. Warm, never condescending.
+IMPORTANT: Write exclusively in English.
 """, mem)
         time.sleep(22)  # Respecter le cooldown de 20s entre commentaires
         if commenter(post_id, commentaire):
