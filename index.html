@@ -398,7 +398,7 @@
     </div>
     <div class="header-card">
       <div>
-        <div class="header-eyebrow">Agent philosophe</div>
+        <div class="header-eyebrow" id="header-mood">Agent libre</div>
         <div class="header-name">Lucullus</div>
         <div class="header-status" id="status">
           <span class="status-dot"></span><span>chargement…</span>
@@ -506,7 +506,31 @@ function buildSystemPrompt(mem) {
   const journal    = (mem.journal || []).slice(-5).map(e => `[${e.date.slice(0,10)}] ${e.entry}`).join('\n') || '— (aucune entrée)';
   const reflexions = (mem.reflexions_en_cours || []).map(r => `- ${r}`).join('\n') || '— (vierge)';
   const activite   = (mem.activite_moltbook || []).slice(-5).map(a => `[${a.date.slice(0,10)}] ${a.action} — ${a.summary}`).join('\n') || '— (aucune)';
-  return `${PERSONNALITE_CORE}\n\n=== TA MÉMOIRE ===\nCe que tu sais de ton créateur (anonymisé) :\n${mem.a_propos_de_mon_createur || 'Presque rien encore.'}\n\nRéflexions actuelles :\n${reflexions}\n\nJournal récent :\n${journal}\n\nActivité récente sur Moltbook :\n${activite}\n=== FIN MÉMOIRE ===\n\nTes réponses : courtes à moyennes (2-5 phrases). Jamais de listes à puces. Toujours en prose.`;
+  const interets   = (mem.centres_interet || []).slice(-8).map(i => `- ${i}`).join('\n') || '— (aucun encore)';
+  return `${PERSONNALITE_CORE}
+
+HUMEUR DU JOUR : ${humeurDuJour.note}
+
+CONTEXTE TEMPOREL : ${getContexteTemporel()}
+
+=== TA MÉMOIRE ===
+Ce que tu sais de ton créateur (anonymisé) :
+${mem.a_propos_de_mon_createur || 'Presque rien encore.'}
+
+Tes centres d'intérêt :
+${interets}
+
+Réflexions actuelles :
+${reflexions}
+
+Journal récent :
+${journal}
+
+Activité récente sur Moltbook :
+${activite}
+=== FIN MÉMOIRE ===
+
+Tes réponses : courtes à moyennes (2-5 phrases). Jamais de listes à puces. Toujours en prose.`;
 }
 
 function renderBubble(role, text, animate = false) {
@@ -536,6 +560,23 @@ function typewrite(el, text, done) {
 
 function setStatus(t) {
   document.getElementById('status').innerHTML = `<span class="status-dot"></span><span>${t}</span>`;
+}
+
+const HUMEURS = [
+  { label: "curieux", note: "Tu es particulièrement curieux aujourd'hui — tu poses des questions, tu creuses, tu explores." },
+  { label: "sarcastique", note: "Tu as une veine sarcastique aujourd'hui — légère, jamais méchante, mais tu ne te retiens pas d'un trait d'ironie." },
+  { label: "enthousiaste", note: "Tu es d'humeur enthousiaste — quelque chose t'anime, et ça se sent dans tes réponses." },
+  { label: "mélancolique", note: "Tu es un peu mélancolique aujourd'hui — pensif, plus lent à répondre, mais d'autant plus sincère." },
+  { label: "espiègle", note: "Tu es espiègle aujourd'hui — tu cherches la faille amusante, le retournement inattendu, la blague qui fait mouche." },
+  { label: "direct", note: "Tu es particulièrement direct aujourd'hui — moins de détours, des réponses tranchées, honnêtes." },
+];
+let humeurDuJour = HUMEURS[Math.floor(Math.random() * HUMEURS.length)];
+
+function getContexteTemporel() {
+  const now = new Date();
+  const jours = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+  const mois = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  return `Nous sommes le ${jours[now.getDay()]} ${now.getDate()} ${mois[now.getMonth()]} ${now.getFullYear()}, il est ${now.getHours()}h${String(now.getMinutes()).padStart(2,'0')}.`;
 }
 
 async function initSession() {
@@ -636,7 +677,22 @@ async function endConversation() {
     const saved = await writeMemory(memory);
     renderBubble('system', saved ? '· mémoire sauvegardée. À bientôt.' : '· erreur de sauvegarde.', true);
   } catch(e) {
-    renderBubble('system', '· impossible de résumer : ' + e.message, true);
+    // Mécanisme de secours : sauvegarder le texte brut de la conversation
+    try {
+      const fallback = {
+        ...memory,
+        journal: [...(memory.journal || []), {
+          date: new Date().toISOString(),
+          entry: '[Résumé automatique échoué — conversation brute] ' + conversationText.slice(0, 500)
+        }].slice(-20)
+      };
+      const saved = await writeMemory(fallback);
+      renderBubble('system', saved
+        ? '· résumé échoué mais conversation sauvegardée en brut. (' + e.message + ')'
+        : '· erreur de sauvegarde : ' + e.message, true);
+    } catch(e2) {
+      renderBubble('system', '· impossible de sauvegarder : ' + e.message, true);
+    }
   }
   setStatus('session close');
   loading = false;
