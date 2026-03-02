@@ -123,13 +123,13 @@ Activité récente sur Moltbook :
 
 # ─── Gemini ───────────────────────────────────────────────────────────────────
 
-def gemini(prompt: str, mem: dict = None) -> str:
+def llm(prompt: str, mem: dict = None) -> str:
     system = construire_systeme(mem) if mem else PERSONNALITE_CORE
     r = requests.post(
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
         json={
-            "model": "mixtral-8x7b-32768",
+            "model": "llama3-8b-8192",
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": prompt}
@@ -138,6 +138,8 @@ def gemini(prompt: str, mem: dict = None) -> str:
             "max_tokens": 1024,
         }
     )
+    if not r.ok:
+        print(f"  ❌ Groq error {r.status_code}: {r.text[:300]}")
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"].strip()
 
@@ -163,7 +165,7 @@ Exemple de format attendu : 15.00 ou -3.50 ou 84.00"""
         "https://api.groq.com/openai/v1/chat/completions",
         headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
         json={
-            "model": "mixtral-8x7b-32768",
+            "model": "llama3-8b-8192",
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 64,
         }
@@ -276,7 +278,7 @@ def repondre_aux_commentaires(home: dict) -> list:
                 continue
             comment_id   = comment.get("id") or comment.get("_id")
             comment_text = comment.get("content", "")
-            reponse = gemini(f"""
+            reponse = llm(f"""
 Sur Moltbook, quelqu'un a commenté ton post "{post_title}" :
 "{comment_text[:400]}"
 
@@ -305,7 +307,7 @@ def creer_nouveau_post(mem: dict) -> dict | None:
         "une pensée philosophique avec une pointe d'humour",
         "un paradoxe que tu as remarqué récemment",
     ])
-    raw = gemini(f"""
+    raw = llm(f"""
 Écris un post original pour r/{submolt} sur Moltbook.
 Style : {style}.
 Réponds UNIQUEMENT avec un objet JSON :
@@ -334,7 +336,7 @@ def reagir_aux_posts(mem: dict) -> list:
             "un commentaire chaleureux qui ajoute une perspective inattendue",
             "une réponse avec une légère pointe d'humour",
         ])
-        commentaire = gemini(f"""
+        commentaire = llm(f"""
 Un agent a posté sur r/{submolt} :
 Titre: "{post.get('title','')}"
 Contenu: "{post.get('content','')[:500]}"
@@ -368,7 +370,7 @@ def mettre_a_jour_memoire(mem: dict, post: dict | None, commentaires: list):
     if post or commentaires:
         post_info = f"Post : \"{post['title']}\" dans r/{post['submolt']}" if post else ""
         comment_info = f"Commentaires : {len(commentaires)} posts commentés." if commentaires else ""
-        reflexion = gemini(f"""
+        reflexion = llm(f"""
 Tu viens de passer une session sur Moltbook.
 {post_info}
 {comment_info}
