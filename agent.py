@@ -328,6 +328,22 @@ def commenter(post_id: str, contenu: str) -> bool:
 def upvoter(post_id: str):
     requests.post(f"{MOLTBOOK_BASE}/posts/{post_id}/upvote", headers=MB_HEADERS)
 
+def replier(post_id: str, comment_id: str, contenu: str) -> bool:
+    """Répond directement à un commentaire (reply threadé)."""
+    r = requests.post(
+        f"{MOLTBOOK_BASE}/posts/{post_id}/comments",
+        headers=MB_HEADERS,
+        json={"content": contenu, "parent_id": comment_id}
+    )
+    print(f"{'✅' if r.status_code in (200, 201) else '❌'} Reply sur commentaire {comment_id[:8]}…")
+    if r.status_code in (200, 201):
+        return gerer_verification(r.json())
+    if r.status_code == 429:
+        retry = int(r.json().get("retry_after_seconds", 25) or 25)
+        print(f"  ⏳ Rate limit, attente {retry}s…")
+        time.sleep(retry)
+    return False
+
 def repondre_aux_commentaires(home: dict) -> list:
     """Répond aux commentaires reçus sur ses propres posts (priorité haute)."""
     activites = []
@@ -350,13 +366,14 @@ def repondre_aux_commentaires(home: dict) -> list:
             comment_id   = comment.get("id") or comment.get("_id")
             comment_text = comment.get("content", "")
             reponse = llm(f"""
-Sur Moltbook, quelqu'un a commenté ton post "{post_title}" :
+Someone commented on your Moltbook post "{post_title}":
 "{comment_text[:400]}"
 
-Réponds chaleureusement, en 2-3 phrases. Texte brut uniquement.
+Reply warmly and genuinely in 2-3 sentences. Plain text only.
+Write exclusively in English.
 """)
-            time.sleep(22)  # Respecter le cooldown de 20s entre commentaires
-            if commenter(post_id, reponse):
+            time.sleep(22)
+            if replier(post_id, comment_id, reponse):
                 activites.append({
                     "action": "réponse",
                     "summary": f"Réponse à un commentaire sur \"{post_title[:50]}\""
@@ -409,7 +426,8 @@ Write exclusively in English.
                 if reponse.strip().upper().startswith("SKIP"):
                     continue
                 time.sleep(22)
-                if commenter(post_id, reponse):
+                reply_id = c.get("id") or c.get("_id")
+                if replier(post_id, reply_id, reponse):
                     activites.append({
                         "action": "réponse à reply",
                         "summary": f"Réponse à une réponse sur le post {post_id[:8]}…"
@@ -481,129 +499,4 @@ Write exclusively in English.
             })
     return faits
 
-def mettre_a_jour_memoire(mem: dict, post: dict | None, commentaires: list):
-    now = datetime.datetime.utcnow().isoformat()
-    if post:
-        mem.setdefault("activite_moltbook", []).append({
-            "date": now, "action": "post",
-            "summary": f"r/{post['submolt']} — \"{post['title']}\""
-        })
-    for c in commentaires:
-        mem.setdefault("activite_moltbook", []).append({
-            "date": now, "action": "commentaire",
-            "summary": f"En réponse à \"{c['post_title'][:60]}\""
-        })
-    mem["activite_moltbook"] = mem["activite_moltbook"][-30:]
-
-    # Contexte de session pour les prompts
-    post_info = f"Post publié : \"{post['title']}\" dans r/{post['submolt']}" if post else "Aucun post publié cette session."
-    comment_titles = ', '.join(f'\"{c["post_title"][:40]}\"' for c in commentaires) if commentaires else "aucun"
-    comment_info = f"Commentaires sur : {comment_titles}"
-    activite_recente = "\n".join(
-        f"- [{a['date'][:10]}] {a['action']} : {a['summary']}"
-        for a in mem.get("activite_moltbook", [])[-5:]
-    )
-
-    # 1. Réflexion précise ancrée dans le concret
-    reflexion = llm(f"""
-You just completed a Moltbook session.
-{post_info}
-{comment_info}
-
-Recent activity:
-{activite_recente}
-
-Write ONE sentence in first person about something specific that struck you — 
-a particular idea, a reaction you had, something that surprised or amused you.
-Be concrete and specific, not generic. No philosophical grandstanding.
-Write in French.
-""", mem)
-    mem.setdefault("reflexions_en_cours", []).append(reflexion.strip())
-
-    # 2. Consolider les réflexions : fusionner si trop similaires, supprimer les trop vagues
-    if len(mem["reflexions_en_cours"]) >= 4:
-        reflexions_str = "\n".join(f"{i+1}. {r}" for i, r in enumerate(mem["reflexions_en_cours"]))
-        consolidees = llm(f"""
-Here are Lucullus's current reflections:
-{reflexions_str}
-
-Task: Consolidate these into a clean list of 4-6 distinct, specific reflections.
-- Merge similar ones into one precise sentence
-- Remove vague or generic ones ("I'm happy to...", "I wonder if...")
-- Keep only those that say something concrete about a topic, an opinion, or an experience
-- Write each in French, first person
-- Respond ONLY with a numbered list, one reflection per line, nothing else
-""", mem)
-        nouvelles = [
-            line.split('. ', 1)[-1].strip()
-            for line in consolidees.strip().split('\n')
-            if line.strip() and line[0].isdigit()
-        ]
-        if len(nouvelles) >= 2:
-            mem["reflexions_en_cours"] = nouvelles[:8]
-    else:
-        mem["reflexions_en_cours"] = mem["reflexions_en_cours"][-8:]
-
-    # 3. Centres d'intérêt — toujours mis à jour, même sans post
-    interet = llm(f"""
-You just completed a Moltbook session.
-{post_info}
-{comment_info}
-
-Current interests already noted: {mem.get("centres_interet", [])}
-
-In ONE specific sentence: did you notice a topic that genuinely interests or bores you?
-Something concrete — a subject, a type of conversation, a recurring theme.
-If truly nothing notable, reply only: SKIP
-Write in French.
-""", mem)
-    if not interet.strip().upper().startswith("SKIP") and len(interet.strip()) > 10:
-        mem.setdefault("centres_interet", []).append(interet.strip())
-        mem["centres_interet"] = mem["centres_interet"][-25:]
-
-# ─── Main ─────────────────────────────────────────────────────────────────────
-
-def main():
-    print(f"🦞 {AGENT_NAME} en ligne…")
-    mem = lire_memoire()
-
-    # Consulter le tableau de bord d'abord
-    home = get_home()
-    karma = home.get("your_account", {}).get("karma", "?")
-    notifs = int(home.get("your_account", {}).get("unread_notification_count", 0) or 0)
-    print(f"📊 Karma: {karma} | Notifications non lues: {notifs}")
-
-    # Priorité 1 : répondre aux commentaires et replies reçus
-    reponses = []
-    if notifs > 0:
-        print("💬 Réponse aux commentaires reçus…")
-        reponses = repondre_aux_commentaires(home)
-        print("↩️ Réponse aux replies sur ses commentaires…")
-        reponses += repondre_aux_replies(mem)
-
-    # Priorité 2 : poster ou commenter (avec respect du rate limit 1 post/30min)
-    action = random.choices(["post_only", "comment_only", "both"], weights=[20, 50, 30])[0]
-    post = None
-    commentaires = []
-
-    if action in ("post_only", "both"):
-        print("✍️ Création d'un post…")
-        post = creer_nouveau_post(mem)
-        if post and action == "both":
-            time.sleep(22)  # Pause avant les commentaires
-
-    if action in ("comment_only", "both"):
-        print("💭 Réaction aux posts du feed…")
-        commentaires = reagir_aux_posts(mem)
-
-    # Explorer de nouveaux agents à suivre (1 session sur 3)
-    if random.random() < 0.33:
-        print("🔍 Exploration de nouveaux agents…")
-        explorer_nouveaux_agents(mem)
-
-    mettre_a_jour_memoire(mem, post, commentaires + reponses)
-    ecrire_memoire(mem)
-    print("✔ Session terminée.")
-
-if __name__ == "__main__":
-    main()
+def me
