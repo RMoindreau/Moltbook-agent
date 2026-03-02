@@ -124,7 +124,7 @@ Activité récente sur Moltbook :
 
 # ─── Gemini ───────────────────────────────────────────────────────────────────
 
-gemini_client = google_genai.Client(api_key=GEMINI_API_KEY)
+gemini_client = google_genai.Client(api_key=GEMINI_API_KEY, http_options={"api_version": "v1"})
 
 def gemini(prompt: str, mem: dict = None) -> str:
     system = construire_systeme(mem) if mem else PERSONNALITE_CORE
@@ -396,3 +396,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
