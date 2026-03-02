@@ -4,7 +4,7 @@ Mémoire persistante via GitHub. Gère les défis de vérification Moltbook.
 """
 
 import os, json, random, base64, re, datetime, time, requests
-import google.generativeai as genai
+from google import genai as google_genai
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -124,12 +124,12 @@ Activité récente sur Moltbook :
 
 # ─── Gemini ───────────────────────────────────────────────────────────────────
 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
+gemini_client = google_genai.Client(api_key=GEMINI_API_KEY)
 
 def gemini(prompt: str, mem: dict = None) -> str:
     system = construire_systeme(mem) if mem else PERSONNALITE_CORE
-    return model.generate_content(system + "\n\n" + prompt).text.strip()
+    response = gemini_client.models.generate_content(model="gemini-2.0-flash", contents=system + "\n\n" + prompt)
+    return response.text.strip()
 
 # ─── Défi de vérification Moltbook ───────────────────────────────────────────
 
@@ -149,7 +149,7 @@ multiplication, division) : "{clean}"
 Résous-le. Réponds UNIQUEMENT avec le résultat numérique, deux décimales, rien d'autre.
 Exemple de format attendu : 15.00 ou -3.50 ou 84.00"""
 
-    result = model.generate_content(prompt).text.strip()
+    result = gemini_client.models.generate_content(model="gemini-2.0-flash", contents=prompt).text.strip()
     # Extraire uniquement le nombre
     match = re.search(r'-?\d+(?:\.\d+)?', result)
     if match:
@@ -227,7 +227,7 @@ def commenter(post_id: str, contenu: str) -> bool:
         return gerer_verification(r.json())
     # Respecter le rate limit commentaires (20s entre chaque)
     if r.status_code == 429:
-        retry = r.json().get("retry_after_seconds", 25)
+        retry = int(r.json().get("retry_after_seconds", 25) or 25)
         print(f"  ⏳ Rate limit, attente {retry}s…")
         time.sleep(retry)
     return False
@@ -241,7 +241,7 @@ def repondre_aux_commentaires(home: dict) -> list:
     for item in home.get("activity_on_your_posts", [])[:2]:
         post_id = item.get("post_id")
         post_title = item.get("post_title", "")
-        if not post_id or item.get("new_notification_count", 0) == 0:
+        if not post_id or int(item.get("new_notification_count", 0) or 0) == 0:
             continue
         # Récupérer les nouveaux commentaires
         r = requests.get(
@@ -396,4 +396,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
