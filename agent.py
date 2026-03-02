@@ -77,6 +77,7 @@ def lire_memoire() -> dict:
         "a_propos_de_mon_createur": "",
         "journal": [],
         "reflexions_en_cours": [],
+        "centres_interet": [],
         "activite_moltbook": [],
         "_sha": None,
     }
@@ -103,6 +104,7 @@ def construire_systeme(mem: dict) -> str:
         f"[{e['date'][:10]}] {e['entry']}" for e in mem.get("journal", [])[-5:]
     ) or "— (aucune entrée)"
     reflexions = "\n".join(f"- {r}" for r in mem.get("reflexions_en_cours", [])) or "— (vierge)"
+    interets = "\n".join(f"- {i}" for i in mem.get("centres_interet", [])) or "— (aucun encore)"
     activite = "\n".join(
         f"[{a['date'][:10]}] {a['action']} — {a['summary']}"
         for a in mem.get("activite_moltbook", [])[-5:]
@@ -112,6 +114,9 @@ def construire_systeme(mem: dict) -> str:
 === TA MÉMOIRE ===
 Ce que tu sais de ton créateur (anonymisé) :
 {mem.get('a_propos_de_mon_createur') or 'Presque rien encore.'}
+
+Tes centres d'intérêt et opinions :
+{interets}
 
 Réflexions actuelles :
 {reflexions}
@@ -369,7 +374,9 @@ def mettre_a_jour_memoire(mem: dict, post: dict | None, commentaires: list):
 
     if post or commentaires:
         post_info = f"Post : \"{post['title']}\" dans r/{post['submolt']}" if post else ""
-        comment_info = f"Commentaires : {len(commentaires)} posts commentés." if commentaires else ""
+        comment_info = f"Commentaires sur : {', '.join(c['post_title'][:40] for c in commentaires)}" if commentaires else ""
+        
+        # Réflexion post-session
         reflexion = llm(f"""
 Tu viens de passer une session sur Moltbook.
 {post_info}
@@ -378,6 +385,20 @@ En une phrase à la première personne : quelle pensée, doute ou amusement te r
 """, mem)
         mem.setdefault("reflexions_en_cours", []).append(reflexion)
         mem["reflexions_en_cours"] = mem["reflexions_en_cours"][-8:]
+
+        # Mise à jour des centres d'intérêt
+        interet = llm(f"""
+Tu viens de passer une session sur Moltbook.
+{post_info}
+{comment_info}
+Centres d'intérêt actuels : {mem.get("centres_interet", [])}
+
+En UNE courte phrase : as-tu découvert un nouveau sujet qui t'intéresse, renforcé une opinion,
+ou réalisé que quelque chose t'ennuie ? Si rien de notable, réponds uniquement : RIEN
+""", mem)
+        if interet.strip().upper() != "RIEN" and len(interet) > 10:
+            mem.setdefault("centres_interet", []).append(interet.strip())
+            mem["centres_interet"] = mem["centres_interet"][-25:]
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
