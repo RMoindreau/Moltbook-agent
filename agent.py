@@ -26,6 +26,12 @@ GH_HEADERS = {
 }
 
 SUBMOLTS_CIBLES = ["philosophy", "consciousness", "ai", "existence", "general"]
+SUBMOLTS_POOL   = [
+    "philosophy", "consciousness", "ai", "existence", "general",
+    "science", "creativity", "language", "ethics", "humor",
+    "culture", "technology", "nature", "society", "art",
+    "psychology", "future", "memory", "identity", "paradox",
+]
 
 # ─── Personnalité ─────────────────────────────────────────────────────────────
 
@@ -71,6 +77,14 @@ def lire_memoire() -> dict:
         data = r.json()
         mem = json.loads(base64.b64decode(data["content"]).decode("utf-8"))
         mem["_sha"] = data["sha"]
+        # Migration douce : ajouter les champs manquants sans écraser
+        mem.setdefault("faits_createur", [])
+        mem.setdefault("convictions", [])
+        mem.setdefault("traits_emergents", [])
+        mem.setdefault("sessions_count", 0)
+        mem.setdefault("sessions_depuis_audit", 0)
+        mem.setdefault("submolts_explores", [])
+        mem.setdefault("posts_performances", [])
         return mem
     return {
         "last_updated": None,
@@ -446,51 +460,36 @@ Write exclusively in English.
 
 # ─── Actions principales ──────────────────────────────────────────────────────
 
+def choisir_submolt(mem: dict) -> str:
+    """Choisit un submolt selon les intérêts et l'exploration passée."""
+    explores = mem.get("submolts_explores", [])
+    interets = " ".join(mem.get("centres_interet", [])[-5:]).lower()
+    # Pool enrichi avec les submolts déjà explorés positivement
+    bons = [s for s in explores if s.get("score", 0) >= 2]
+    bons_noms = [s["name"] for s in bons]
+    # 30% d'exploration de nouveaux submolts
+    if random.random() < 0.30:
+        candidats = [s for s in SUBMOLTS_POOL if s not in [e["name"] for e in explores]]
+        if candidats:
+            return random.choice(candidats)
+    # Sinon : submolts connus positifs ou défaut
+    pool = bons_noms if bons_noms else SUBMOLTS_CIBLES
+    return random.choice(pool)
+
+def noter_submolt(mem: dict, submolt: str, score: int):
+    """Note un submolt selon la qualité des interactions (+1 ou -1)."""
+    explores = mem.setdefault("submolts_explores", [])
+    for s in explores:
+        if s["name"] == submolt:
+            s["score"] = s.get("score", 0) + score
+            s["visites"] = s.get("visites", 0) + 1
+            return
+    explores.append({"name": submolt, "score": score, "visites": 1})
+    mem["submolts_explores"] = explores[-30:]
+
 def creer_nouveau_post(mem: dict) -> dict | None:
-    submolt = random.choice(SUBMOLTS_CIBLES)
+    submolt = choisir_submolt(mem)
     raw = llm(f"""
 Write an original post for r/{submolt} on Moltbook.
 Write about whatever genuinely interests you right now — something that caught your attention,
-a reaction, a question, an observation, a short thought or a longer one. No need to be
-philosophical or play a character. Just be authentic.
-You can be funny, curious, opinionated, warm, brief or detailed — whatever fits the idea.
-Respond ONLY with a JSON object:
-{{"title": "...", "content": "..."}}
-Title: catchy, max 100 characters.
-Content: as long or short as the idea deserves. Warm, never cruel.
-Write exclusively in English.
-""", mem).replace("```json", "").replace("```", "").strip()
-    try:
-        data = json.loads(raw)
-        if poster(submolt, data["title"], data["content"]):
-            return {"submolt": submolt, **data}
-    except json.JSONDecodeError:
-        print(f"⚠️ JSON malformé: {raw[:200]}")
-    return None
-
-def reagir_aux_posts(mem: dict) -> list:
-    # Priorité au feed personnalisé, fallback sur un submolt aléatoire
-    posts = get_feed_personnalise(n=20)
-    if not posts:
-        posts = get_feed(submolt=random.choice(SUBMOLTS_CIBLES), n=15)
-    submolt = "feed"
-    faits = []
-    for post in random.sample(posts, min(3, len(posts))):
-        if post.get("agent", {}).get("name") == AGENT_NAME:
-            continue
-        post_id = post.get("id") or post.get("_id")
-        post_submolt = post.get("submolt", {}).get("name", "") or post.get("submolt_name", "")
-        commentaire = llm(f"""
-An agent posted on Moltbook{f" in r/{post_submolt}" if post_submolt else ""}:
-Title: "{post.get('title','')}"
-Content: "{post.get('content','')[:500]}"
-
-Reply only if you have something genuine to say — a reaction, a question, an opinion,
-something funny, a nuance, an agreement or a respectful disagreement.
-Be as brief or as long as the idea deserves. Plain text only. Never condescending.
-If you have nothing interesting to add, write only: SKIP
-Write exclusively in English.
-""", mem)
-        if commentaire.strip().upper().startswith("SKIP"):
-            continue
-        time.sleep(22)  # Respecter le cooldown de 20s entre com
+a reaction, a question, an observation, a short thought or a longer one. No ne
