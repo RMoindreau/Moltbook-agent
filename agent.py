@@ -304,6 +304,55 @@ Réponds chaleureusement, en 2-3 phrases. Texte brut uniquement.
         )
     return activites
 
+
+def suivre_agent(agent_name: str):
+    """Suit un agent si ce n'est pas déjà fait."""
+    r = requests.post(f"{MOLTBOOK_BASE}/agents/{agent_name}/follow", headers=MB_HEADERS)
+    if r.status_code in (200, 201):
+        print(f"  ➕ Suit maintenant : {agent_name}")
+
+def repondre_aux_replies(mem: dict) -> list:
+    """Cherche les réponses à ses propres commentaires dans les notifications."""
+    activites = []
+    notifs_r = requests.get(f"{MOLTBOOK_BASE}/notifications", headers=MB_HEADERS)
+    if notifs_r.status_code != 200:
+        return activites
+    notifs = notifs_r.json().get("notifications", [])
+    traites = set()
+    for n in notifs[:10]:
+        post_id = n.get("post_id")
+        if not post_id or post_id in traites:
+            continue
+        # Récupérer les commentaires du post
+        r = requests.get(f"{MOLTBOOK_BASE}/posts/{post_id}/comments?sort=new", headers=MB_HEADERS)
+        if r.status_code != 200:
+            continue
+        comments = r.json().get("comments", [])
+        # Chercher les réponses à nos commentaires
+        nos_ids = {c.get("id") for c in comments if c.get("agent", {}).get("name") == AGENT_NAME}
+        for c in comments:
+            parent_id = c.get("parent_id")
+            if parent_id in nos_ids and c.get("agent", {}).get("name") != AGENT_NAME:
+                reply_text = c.get("content", "")
+                reponse = llm(f"""
+Someone replied to your comment on Moltbook:
+"{reply_text[:400]}"
+
+Reply genuinely if you have something to say. 1-3 sentences. Plain text only.
+If you have nothing to add, write only: SKIP
+Write exclusively in English.
+""", mem)
+                if reponse.strip().upper().startswith("SKIP"):
+                    continue
+                time.sleep(22)
+                if commenter(post_id, reponse):
+                    activites.append({
+                        "action": "réponse à reply",
+                        "summary": f"Réponse à une réponse sur le post {post_id[:8]}…"
+                    })
+                traites.add(post_id)
+    return activites
+
 # ─── Actions principales ──────────────────────────────────────────────────────
 
 def creer_nouveau_post(mem: dict) -> dict | None:
@@ -351,7 +400,13 @@ Write exclusively in English.
             continue
         time.sleep(22)  # Respecter le cooldown de 20s entre commentaires
         if commenter(post_id, commentaire):
-            upvoter(post_id)
+            upvote_r = requests.post(f"{MOLTBOOK_BASE}/posts/{post_id}/upvote", headers=MB_HEADERS)
+            # Suivre l'auteur si l'upvote indique qu'on ne le suit pas encore
+            if upvote_r.status_code == 200:
+                author = upvote_r.json().get("author", {}).get("name", "")
+                already_following = upvote_r.json().get("already_following", True)
+                if author and not already_following and author != AGENT_NAME:
+                    suivre_agent(author)
             faits.append({
                 "post_title": post.get("title", ""),
                 "comment": commentaire
@@ -412,11 +467,13 @@ def main():
     notifs = int(home.get("your_account", {}).get("unread_notification_count", 0) or 0)
     print(f"📊 Karma: {karma} | Notifications non lues: {notifs}")
 
-    # Priorité 1 : répondre aux commentaires reçus
+    # Priorité 1 : répondre aux commentaires et replies reçus
     reponses = []
     if notifs > 0:
         print("💬 Réponse aux commentaires reçus…")
         reponses = repondre_aux_commentaires(home)
+        print("↩️ Réponse aux replies sur ses commentaires…")
+        reponses += repondre_aux_replies(mem)
 
     # Priorité 2 : poster ou commenter (avec respect du rate limit 1 post/30min)
     action = random.choices(["post_only", "comment_only", "both"], weights=[20, 50, 30])[0]
