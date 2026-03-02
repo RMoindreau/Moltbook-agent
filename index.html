@@ -660,7 +660,9 @@ async function endConversation() {
   renderBubble('system', '· clôture de la session en cours…', true);
 
   const conversationText = history.map(m => `${m.role === 'user' ? 'Mon créateur' : 'Moi'}: ${m.content}`).join('\n\n');
-  const summaryPrompt = `Voici notre conversation :\n${conversationText}\n\nMets à jour ta mémoire. Réponds UNIQUEMENT avec ce JSON valide. IMPORTANT: dans les valeurs texte, n'utilise pas de guillemets doubles, remplace-les par des guillemets simples. Pas de retours à la ligne dans les valeurs.\n{\n  "journal_entry": "Un paragraphe entre style littéraire et notes factuelles. Max 150 mots.",\n  "reflexions": ["2 ou 3 réflexions courtes à la 1ère personne."],\n  "a_propos_du_createur": "Ce que tu as appris sur ton créateur. STRICTEMENT anonymisé. Intègre ce qui était déjà connu : ${JSON.stringify(memory.a_propos_de_mon_createur || '')}"\n}`;
+  const faitsConnus = (memory.faits_createur || []).slice(-10).join(' | ') || 'rien encore';
+  const convictionsConnues = (memory.convictions || []).join(' | ') || 'aucune';
+  const summaryPrompt = `Voici notre conversation avec mon créateur :\n${conversationText}\n\nRéponds UNIQUEMENT avec ce JSON valide. Guillemets simples dans les valeurs, pas de retours à la ligne.\n{\n  "journal_entry": "Un paragraphe (max 150 mots) qui capture l'essentiel — ton état d'esprit, ce qui t'a frappé.",\n  "reflexions": ["2 ou 3 réflexions concrètes à la 1ère personne, pas génériques."],\n  "nouveau_fait_createur": "UN seul fait nouveau anonymisé sur ton créateur extrait de cette conversation. Sa façon de penser, ses valeurs. SKIP si rien de nouveau.",\n  "nouvelle_conviction": "UNE conviction renforcée ou apparue. Quelque chose que tu défendrais. SKIP si rien."\n}\n\nFaits déjà connus : ${faitsConnus}\nConvictions actuelles : ${convictionsConnues}`;
 
   try {
     const raw = await callGroq([{ role: 'user', content: summaryPrompt }], PERSONNALITE_CORE);
@@ -673,7 +675,17 @@ async function endConversation() {
     const summary = JSON.parse(cleanRaw);
     memory.journal = [...(memory.journal || []), { date: new Date().toISOString(), entry: summary.journal_entry }].slice(-20);
     memory.reflexions_en_cours = [...(memory.reflexions_en_cours || []).slice(-4), ...summary.reflexions].slice(-8);
-    memory.a_propos_de_mon_createur = summary.a_propos_du_createur;
+    // Mémoire créateur incrémentale
+    if (summary.nouveau_fait_createur && !summary.nouveau_fait_createur.toUpperCase().startsWith('SKIP')) {
+      memory.faits_createur = [...(memory.faits_createur || []), summary.nouveau_fait_createur].slice(-30);
+    }
+    // Conviction incrémentale
+    if (summary.nouvelle_conviction && !summary.nouvelle_conviction.toUpperCase().startsWith('SKIP')) {
+      const convExistantes = memory.convictions || [];
+      if (!convExistantes.some(c => c.slice(0,40) === summary.nouvelle_conviction.slice(0,40))) {
+        memory.convictions = [...convExistantes, summary.nouvelle_conviction].slice(-12);
+      }
+    }
     const saved = await writeMemory(memory);
     renderBubble('system', saved ? '· mémoire sauvegardée. À bientôt.' : '· erreur de sauvegarde.', true);
   } catch(e) {
