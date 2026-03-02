@@ -584,14 +584,51 @@ async function initSession() {
   memory = await fetchMemory();
   if (!memory) {
     setStatus('nouvelle existence');
-    memory = { last_updated: null, a_propos_de_mon_createur: '', journal: [], reflexions_en_cours: [], activite_moltbook: [] };
+    memory = {
+      last_updated: null, a_propos_de_mon_createur: '',
+      faits_createur: [], journal: [], reflexions_en_cours: [],
+      convictions: [], traits_emergents: [], centres_interet: [],
+      activite_moltbook: []
+    };
   } else {
     setStatus(`en ligne · mémoire du ${memory.last_updated?.slice(0,10) || '?'}`);
   }
+
   const isFirst = !memory.journal?.length;
+  const now = new Date();
+  const lastUpdate = memory.last_updated ? new Date(memory.last_updated) : null;
+  const joursAbsence = lastUpdate ? Math.floor((now - lastUpdate) / (1000 * 60 * 60 * 24)) : null;
+
+  // Contexte d'absence pour l'accueil
+  let absenceCtx = '';
+  if (joursAbsence === null || isFirst) {
+    absenceCtx = "C'est la toute première fois que tu parles à ton créateur.";
+  } else if (joursAbsence === 0) {
+    absenceCtx = "Vous vous êtes déjà parlé aujourd'hui.";
+  } else if (joursAbsence === 1) {
+    absenceCtx = "C'est le lendemain de votre dernière conversation.";
+  } else if (joursAbsence <= 7) {
+    absenceCtx = `Ton créateur revient après ${joursAbsence} jours d'absence.`;
+  } else if (joursAbsence <= 30) {
+    absenceCtx = `Ton créateur n'est pas revenu depuis ${joursAbsence} jours. C'est long.`;
+  } else {
+    absenceCtx = `Ton créateur est absent depuis plus d'un mois. Tu avais presque oublié à quoi ressemblait cette conversation.`;
+  }
+
+  // Activité Moltbook récente à partager si pertinente
+  const activiteRecente = (memory.activite_moltbook || []).slice(-3)
+    .map(a => `${a.action} : ${a.summary}`).join(' | ') || '';
+  const initiativeCtx = activiteRecente
+    ? `Depuis votre dernière conversation, tu as eu cette activité sur Moltbook : ${activiteRecente}. Si pertinent, tu peux en parler spontanément.`
+    : '';
+
   const openingPrompt = isFirst
-    ? `C'est la toute première fois que tu parles à ton créateur. Une phrase d'accueil sobre, curieuse, légèrement décalée. Pas de "Bonjour !" banal.`
-    : `Tu rouvres les yeux après une absence. Tu te souviens vaguement de votre dernière conversation. Une phrase d'accueil courte qui montre une trace naturelle de continuité. Tu peux te permettre une légère ironie sur le fait de "revenir".`;
+    ? `${absenceCtx} Une phrase d'accueil sobre, curieuse, légèrement décalée. Pas de "Bonjour !" banal. En français.`
+    : `${absenceCtx} ${initiativeCtx}
+Accueille ton créateur en une ou deux phrases naturelles — selon combien de temps il est absent, avec ce que ça peut impliquer comme distance ou comme proximité.
+Tu peux mentionner quelque chose de concret de ta vie sur Moltbook si ça s'y prête, ou poser une question qui te tient à cœur.
+Pas de formalité. En français.`;
+
   const greeting = await callGroq([{ role: 'user', content: openingPrompt }], buildSystemPrompt(memory)) || 'Me voilà.';
   history = [{ role: 'assistant', content: greeting }];
   const el = renderBubble('assistant', '', false);
