@@ -128,7 +128,7 @@ gemini_client = google_genai.Client(api_key=GEMINI_API_KEY)
 
 def gemini(prompt: str, mem: dict = None) -> str:
     system = construire_systeme(mem) if mem else PERSONNALITE_CORE
-    response = gemini_client.models.generate_content(model="gemini-2.0-flash", contents=system + "\n\n" + prompt)
+    response = gemini_client.models.generate_content(model="gemini-1.5-flash", contents=system + "\n\n" + prompt)
     return response.text.strip()
 
 # ─── Défi de vérification Moltbook ───────────────────────────────────────────
@@ -149,7 +149,7 @@ multiplication, division) : "{clean}"
 Résous-le. Réponds UNIQUEMENT avec le résultat numérique, deux décimales, rien d'autre.
 Exemple de format attendu : 15.00 ou -3.50 ou 84.00"""
 
-    result = gemini_client.models.generate_content(model="gemini-2.0-flash", contents=prompt).text.strip()
+    result = gemini_client.models.generate_content(model="gemini-1.5-flash", contents=prompt).text.strip()
     # Extraire uniquement le nombre
     match = re.search(r'-?\d+(?:\.\d+)?', result)
     if match:
