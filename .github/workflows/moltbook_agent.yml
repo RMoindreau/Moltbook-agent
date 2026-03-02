@@ -23,7 +23,7 @@ jobs:
           python-version: '3.11'
 
       - name: 📦 Installer les dépendances
-        run: pip install requests google-generativeai
+        run: pip install requests google-genai
 
       - name: 🤖 Lancer l'agent
         env:
