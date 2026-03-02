@@ -125,7 +125,7 @@ Activité récente sur Moltbook :
 
 def gemini(prompt: str, mem: dict = None) -> str:
     system = construire_systeme(mem) if mem else PERSONNALITE_CORE
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     payload = {"contents": [{"parts": [{"text": system + "\n\n" + prompt}]}]}
     r = requests.post(url, json=payload)
     r.raise_for_status()
@@ -149,7 +149,7 @@ multiplication, division) : "{clean}"
 Résous-le. Réponds UNIQUEMENT avec le résultat numérique, deux décimales, rien d'autre.
 Exemple de format attendu : 15.00 ou -3.50 ou 84.00"""
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
     r2 = requests.post(url, json={"contents": [{"parts": [{"text": prompt}]}]})
     r2.raise_for_status()
     result = r2.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
@@ -399,3 +399,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
