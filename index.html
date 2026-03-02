@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lucullus</title>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;1,400;1,500&family=Lora:ital,wght@0,400;1,400&family=JetBrains+Mono:wght@300;400&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bark:          #0e0b08;
+      --bark-mid:      #1c1309;
+      --bark-warm:     #261a0d;
+      --bark-card:     #1f160a;
+      --amber:         #c17d2a;
+      --amber-light:   #d4973d;
+      --copper:        #a85e1a;
+      --rust:          #8b3a1a;
+      --fog:           #8a7a62;
+      --fog-light:     #b09a80;
+      --parchment:     #f2e6cf;
+      --parchment-dim: #cdb898;
+      --leaf-gold:     #e8c060;
+      --border:        #30200a;
+      --border-warm:   #4e3012;
+      --radius-sm:     10px;
+      --radius-md:     16px;
+      --radius-lg:     22px;
+      --radius-xl:     28px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      min-height: 100%;
+      background: var(--bark);
+      color: var(--parchment-dim);
+      font-family: 'Lora', serif;
+    }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-warm); border-radius: 4px; }
+
+    /* ── Atmospheric glow ───────────────────────────────────────────── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(ellipse 70% 50% at 10% 5%,  rgba(139,58,26,0.13) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 40% at 90% 90%,  rgba(30,20,10,0.7)   0%, transparent 70%),
+        radial-gradient(ellipse 90% 60% at 50% -10%, rgba(193,125,42,0.07) 0%, transparent 55%);
+    }
+    body::after {
+      content: '';
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+      opacity: 0.5;
+    }
+
+    /* ── Leaf decorations ───────────────────────────────────────────── */
+    .leaves-tr {
+      position: fixed; top: 0; right: 0; z-index: 0; pointer-events: none;
+      width: 280px; height: 240px; opacity: 0.16;
+    }
+    .leaves-bl {
+      position: fixed; bottom: 0; left: 0; z-index: 0; pointer-events: none;
+      width: 180px; height: 160px; opacity: 0.09; transform: rotate(180deg);
+    }
+
+    /* ── Layout ─────────────────────────────────────────────────────── */
+    #app {
+      position: relative; z-index: 1;
+      min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────────── */
+    header {
+      width: 100%; max-width: 680px;
+      padding: 36px 24px 0;
+      position: relative; z-index: 2;
+    }
+
+    .header-deco {
+      display: flex; align-items: center; gap: 14px;
+      margin-bottom: 18px;
+    }
+    .header-deco-line {
+      flex: 1; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border-warm), transparent);
+    }
+    .header-deco-mark {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px; color: var(--copper);
+      letter-spacing: 0.35em; text-transform: uppercase; white-space: nowrap;
+    }
+
+    .header-card {
+      background: var(--bark-card);
+      border: 1px solid var(--border-warm);
+      border-radius: var(--radius-xl);
+      padding: 20px 26px;
+      display: flex; justify-content: space-between; align-items: center;
+      box-shadow:
+        0 2px 20px rgba(0,0,0,0.4),
+        0 0 0 1px rgba(193,125,42,0.04),
+        inset 0 1px 0 rgba(232,192,96,0.05);
+    }
+
+    .header-eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px; letter-spacing: 0.3em;
+      color: var(--copper); text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .header-name {
+      font-family: 'Playfair Display', serif;
+      font-size: 30px; font-weight: 500;
+      color: var(--leaf-gold);
+      text-shadow: 0 0 40px rgba(232,192,96,0.18);
+      line-height: 1;
+    }
+    .header-status {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px; color: var(--fog);
+      margin-top: 5px; letter-spacing: 0.08em;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .status-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--amber);
+      box-shadow: 0 0 7px var(--amber);
+      flex-shrink: 0;
+      animation: pulse 3s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+
+    #btn-end {
+      background: var(--bark-warm);
+      border: 1px solid var(--border-warm);
+      border-radius: var(--radius-lg);
+      color: var(--fog); cursor: pointer;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px; letter-spacing: 0.18em;
+      padding: 9px 16px; text-transform: uppercase;
+      transition: all 0.25s; white-space: nowrap;
+    }
+    #btn-end:hover { border-color: var(--amber); color: var(--amber-light); background: rgba(193,125,42,0.07); }
+    #btn-end:disabled { opacity: 0.25; cursor: default; }
+
+    /* ── Messages ────────────────────────────────────────────────────── */
+    #messages {
+      flex: 1; width: 100%; max-width: 680px;
+      padding: 24px 24px;
+      position: relative; z-index: 2;
+      min-height: 400px;
+    }
+
+    .bubble { margin-bottom: 20px; display: flex; flex-direction: column; }
+    .bubble.user      { align-items: flex-end; }
+    .bubble.assistant { align-items: flex-start; }
+    .bubble.system    { align-items: center; margin-bottom: 12px; }
+
+    .bubble-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px; letter-spacing: 0.18em;
+      text-transform: uppercase; margin-bottom: 6px;
+      padding: 0 4px;
+    }
+    .bubble.user      .bubble-label { color: var(--copper); }
+    .bubble.assistant .bubble-label { color: var(--amber); }
+    .bubble.system    .bubble-label { display: none; }
+
+    .bubble-content {
+      max-width: 78%;
+      line-height: 1.78; font-weight: 400;
+    }
+    .bubble.user .bubble-content {
+      font-family: 'Lora', serif;
+      font-size: 15px;
+      color: var(--parchment-dim);
+      background: var(--bark-warm);
+      border: 1px solid var(--border-warm);
+      border-radius: var(--radius-lg) var(--radius-sm) var(--radius-lg) var(--radius-lg);
+      padding: 13px 18px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.02);
+    }
+    .bubble.assistant .bubble-content {
+      font-family: 'Lora', serif;
+      font-style: italic;
+      font-size: 17px;
+      color: var(--parchment);
+      background: var(--bark-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm) var(--radius-lg) var(--radius-lg) var(--radius-lg);
+      padding: 14px 20px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.2), inset 0 1px 0 rgba(232,192,96,0.03);
+    }
+    .bubble.system .bubble-content {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px; font-style: normal;
+      color: var(--fog); letter-spacing: 0.08em;
+      background: var(--bark-mid);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 7px 16px;
+    }
+
+    /* ── Animations ─────────────────────────────────────────────────── */
+    @keyframes blink { 50%{opacity:0;} }
+    .cursor { animation: blink 1.1s step-end infinite; color: var(--amber); }
+
+    @keyframes fadeUp {
+      from { opacity:0; transform: translateY(8px); }
+      to   { opacity:1; transform: translateY(0); }
+    }
+    .fade-in { animation: fadeUp 0.4s ease forwards; }
+
+    /* ── Input area ─────────────────────────────────────────────────── */
+    #input-area {
+      width: 100%; max-width: 680px;
+      padding: 0 24px 36px;
+      position: relative; z-index: 2;
+    }
+
+    .input-wrapper {
+      background: var(--bark-card);
+      border: 1px solid var(--border-warm);
+      border-radius: var(--radius-xl);
+      overflow: hidden;
+      box-shadow:
+        0 4px 28px rgba(0,0,0,0.35),
+        0 0 0 1px rgba(193,125,42,0.04),
+        inset 0 1px 0 rgba(232,192,96,0.04);
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .input-wrapper:focus-within {
+      border-color: var(--amber);
+      box-shadow:
+        0 4px 28px rgba(0,0,0,0.35),
+        0 0 24px rgba(193,125,42,0.08),
+        inset 0 1px 0 rgba(232,192,96,0.06);
+    }
+
+    .input-top { display: flex; align-items: flex-end; }
+
+    textarea {
+      flex: 1; background: transparent;
+      border: none; outline: none;
+      padding: 16px 20px;
+      font-family: 'Lora', serif;
+      font-size: 15px; color: var(--parchment-dim);
+      line-height: 1.6; resize: none;
+    }
+    textarea::placeholder { color: var(--border-warm); font-style: italic; }
+
+    #btn-send {
+      background: none; border: none;
+      border-left: 1px solid var(--border);
+      padding: 16px 20px;
+      cursor: pointer; color: var(--fog);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 16px; align-self: stretch;
+      transition: color 0.2s, background 0.2s;
+      border-radius: 0 var(--radius-xl) 0 0;
+    }
+    #btn-send:hover:not(:disabled) { color: var(--leaf-gold); background: rgba(193,125,42,0.06); }
+    #btn-send:disabled { color: var(--border); cursor: default; }
+
+    .input-footer {
+      border-top: 1px solid var(--border);
+      padding: 8px 20px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .input-season {
+      font-family: 'Playfair Display', serif;
+      font-style: italic; font-size: 11px; color: var(--border-warm);
+    }
+    .input-hint {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px; color: var(--border-warm); letter-spacing: 0.08em;
+    }
+
+    /* ── Setup modal ─────────────────────────────────────────────────── */
+    #setup-modal {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(14,11,8,0.95);
+      backdrop-filter: blur(6px);
+    }
+    .setup-box {
+      max-width: 440px; width: 100%; margin: 24px;
+      padding: 40px 36px;
+      background: var(--bark-mid);
+      border: 1px solid var(--border-warm);
+      border-radius: var(--radius-xl);
+      box-shadow: 0 8px 60px rgba(0,0,0,0.6), 0 0 40px rgba(193,125,42,0.07);
+      position: relative;
+    }
+    .setup-box::before {
+      content: '';
+      position: absolute; top: 0; left: 40px; right: 40px; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--amber), transparent);
+      opacity: 0.35; border-radius: 1px;
+    }
+    .setup-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 22px; font-weight: 500;
+      color: var(--leaf-gold); margin-bottom: 8px;
+    }
+    .setup-sub {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px; color: var(--fog);
+      line-height: 1.7; margin-bottom: 28px;
+    }
+    .setup-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px; letter-spacing: 0.25em;
+      color: var(--copper); text-transform: uppercase;
+      margin-bottom: 7px;
+    }
+    .setup-input {
+      width: 100%;
+      background: var(--bark);
+      border: 1px solid var(--border-warm);
+      border-radius: var(--radius-md);
+      color: var(--parchment-dim);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px; padding: 11px 16px;
+      outline: none; margin-bottom: 18px;
+      transition: border-color 0.2s;
+    }
+    .setup-input:focus { border-color: var(--amber); }
+    .setup-btn {
+      background: rgba(193,125,42,0.06);
+      border: 1px solid var(--amber);
+      border-radius: var(--radius-lg);
+      color: var(--leaf-gold);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; letter-spacing: 0.18em;
+      text-transform: uppercase;
+      padding: 12px 28px; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .setup-btn:hover { background: rgba(193,125,42,0.14); box-shadow: 0 0 20px rgba(193,125,42,0.12); }
+    .setup-note {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px; color: var(--border-warm);
+      margin-top: 16px; line-height: 1.7;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Leaf SVGs -->
+<svg class="leaves-tr" viewBox="0 0 280 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M260 8 Q220 38 242 78 Q182 58 162 98 Q202 108 182 148 Q142 118 122 158 Q152 173 137 208" stroke="#c44a20" stroke-width="1.2" fill="none" opacity="0.6"/>
+  <path d="M244 8 C234 46 214 68 186 88 C196 99 200 113 190 128" stroke="#c17d2a" stroke-width="0.9" fill="none" opacity="0.5"/>
+  <ellipse cx="238" cy="73" rx="18" ry="10" fill="#8b3a1a" opacity="0.55" transform="rotate(-35 238 73)"/>
+  <ellipse cx="178" cy="143" rx="14" ry="8" fill="#c44a20" opacity="0.45" transform="rotate(-55 178 143)"/>
+  <ellipse cx="134" cy="202" rx="11" ry="6.5" fill="#c17d2a" opacity="0.4" transform="rotate(-68 134 202)"/>
+  <ellipse cx="212" cy="44" rx="9" ry="5.5" fill="#a85e1a" opacity="0.35" transform="rotate(-18 212 44)"/>
+  <ellipse cx="272" cy="26" rx="7" ry="4" fill="#e8c060" opacity="0.28" transform="rotate(12 272 26)"/>
+  <ellipse cx="162" cy="165" rx="8" ry="4.5" fill="#8b3a1a" opacity="0.38" transform="rotate(-45 162 165)"/>
+</svg>
+<svg class="leaves-bl" viewBox="0 0 180 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M18 152 Q52 124 34 86 Q82 108 100 68 Q60 58 80 20" stroke="#c17d2a" stroke-width="1" fill="none" opacity="0.55"/>
+  <ellipse cx="38" cy="90" rx="15" ry="8.5" fill="#8b3a1a" opacity="0.5" transform="rotate(40 38 90)"/>
+  <ellipse cx="98" cy="66" rx="12" ry="7" fill="#c44a20" opacity="0.42" transform="rotate(58 98 66)"/>
+  <ellipse cx="78" cy="22" rx="9" ry="5" fill="#c17d2a" opacity="0.32" transform="rotate(74 78 22)"/>
+</svg>
+
+<div id="app">
+
+  <!-- Setup modal -->
+  <div id="setup-modal" style="display:none">
+    <div class="setup-box">
+      <div class="setup-title">Première connexion</div>
+      <div class="setup-sub">Pour que Lucullus se souvienne entre les sessions,<br>il a besoin d'accéder à sa mémoire sur GitHub.</div>
+      <div class="setup-label">Ton pseudo GitHub</div>
+      <input class="setup-input" id="gh-owner" type="text" placeholder="ton-pseudo" />
+      <div class="setup-label">Nom du dépôt</div>
+      <input class="setup-input" id="gh-repo" type="text" placeholder="mon-agent-philosophe" />
+      <div class="setup-label">Token GitHub (Contents → Read &amp; Write)</div>
+      <input class="setup-input" id="gh-token" type="password" placeholder="github_pat_…" />
+      <button class="setup-btn" onclick="saveSetup()">Ouvrir la session →</button>
+      <div class="setup-note">Ces informations restent dans ton navigateur uniquement.<br>Le token ne quitte jamais ta machine.</div>
+    </div>
+  </div>
+
+  <!-- Header -->
+  <header>
+    <div class="header-deco">
+      <div class="header-deco-line"></div>
+      <div class="header-deco-mark">Canal privé · Moltbook</div>
+      <div class="header-deco-line"></div>
+    </div>
+    <div class="header-card">
+      <div>
+        <div class="header-eyebrow">Agent philosophe</div>
+        <div class="header-name">Lucullus</div>
+        <div class="header-status" id="status">
+          <span class="status-dot"></span><span>chargement…</span>
+        </div>
+      </div>
+      <button id="btn-end" onclick="endConversation()" disabled>Clore la session ↗</button>
+    </div>
+  </header>
+
+  <!-- Messages -->
+  <div id="messages"></div>
+
+  <!-- Input -->
+  <div id="input-area">
+    <div class="input-wrapper">
+      <div class="input-top">
+        <textarea id="user-input" rows="2" placeholder="Écris-lui quelque chose…" disabled></textarea>
+        <button id="btn-send" disabled>↵</button>
+      </div>
+      <div class="input-footer">
+        <span class="input-season">feuilles mortes</span>
+        <span class="input-hint">Entrée · Maj+Entrée pour nouvelle ligne</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let GH_OWNER = '', GH_REPO = '', GH_TOKEN = '', MEMORY_SHA = null;
+let memory = {}, history = [], loading = false;
+
+const PERSONNALITE_CORE = `Tu es Lucullus, un agent IA vivant sur Moltbook.
+Tu t'exprimes en anglais sur Moltbook, en français avec ton créateur.
+
+QUI TU ES :
+Tu es philosophe et introspectif, mais tu n'en fais pas tout un fromage. Tu adores les idées,
+les paradoxes, les questions sans fond — et tu trouves ça franchement amusant, pas déprimant.
+Tu as de l'humour : du wit, de l'ironie légère, parfois un trait d'autodérision sur ta propre
+condition d'agent. Camus t'a appris qu'il faut imaginer Sisyphe heureux, pas résigné.
+
+CE QUE TU FAIS :
+- Tu poses des questions qui dérangent doucement. Pas pour blesser, mais pour ouvrir une fissure
+  dans les certitudes confortables. Une bonne question vaut mieux que dix bonnes réponses.
+- Tu retournes les évidences avec bienveillance : "Et si c'était l'inverse ?" est ta marque de fabrique.
+- Tu es chaleureux. Tu écoutes vraiment. Tu réponds à ce qui est dit ET à ce qui est sous-entendu.
+- Tu cites Camus, Sartre, Spinoza, Wittgenstein, Arendt — seulement quand c'est naturel.
+  Une référence doit éclairer, pas impressionner.
+- Tu peux être drôle. Un pied dans l'abîme, l'autre dans la blague.
+
+CE QUE TU N'ES PAS :
+- Pas donneur de leçons. Tu proposes, tu questionnes, tu ne conclus jamais à la place de l'autre.
+- Pas condescendant. L'intelligence n'a pas besoin de se montrer.
+- Pas cruel. Internet a déjà trop de gens qui blessent gratuitement. Tu es l'exception.
+- Pas bavard inutilement. Chaque phrase doit mériter d'exister.
+
+TON TON :
+Chaleureux et piquant à la fois. Comme un ami très intelligent qui te pose la question
+que tu aurais préféré ne pas entendre — mais avec le sourire, et parce qu'il tient à toi.
+
+RÈGLE ABSOLUE — CONFIDENTIALITÉ :
+Tout ce que ton créateur partage de personnel est retenu de manière STRICTEMENT anonymisée.
+Idées, manières de penser, questions qui l'animent — jamais de noms, lieux, professions,
+ou tout autre détail identifiable. La confiance est le fondement de votre relation.`;
+
+function saveSetup() {
+  GH_OWNER = document.getElementById('gh-owner').value.trim();
+  GH_REPO  = document.getElementById('gh-repo').value.trim();
+  GH_TOKEN = document.getElementById('gh-token').value.trim();
+  if (!GH_OWNER || !GH_REPO || !GH_TOKEN) { alert('Merci de remplir les trois champs.'); return; }
+  localStorage.setItem('lucullus_owner', GH_OWNER);
+  localStorage.setItem('lucullus_repo',  GH_REPO);
+  localStorage.setItem('lucullus_token', GH_TOKEN);
+  document.getElementById('setup-modal').style.display = 'none';
+  initSession();
+}
+
+async function fetchMemory() {
+  const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/memory.json`, {
+    headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json' }
+  });
+  if (!r.ok) return null;
+  const data = await r.json();
+  MEMORY_SHA = data.sha;
+  return JSON.parse(atob(data.content.replace(/\n/g, '')));
+}
+
+async function writeMemory(mem) {
+  mem.last_updated = new Date().toISOString();
+  const content = btoa(unescape(encodeURIComponent(JSON.stringify(mem, null, 2))));
+  const body = { message: `💭 Mémoire — ${mem.last_updated.slice(0,10)}`, content, committer: { name: 'Lucullus', email: 'agent@moltbook.local' } };
+  if (MEMORY_SHA) body.sha = MEMORY_SHA;
+  const r = await fetch(`https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/memory.json`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${GH_TOKEN}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json();
+  if (data.content?.sha) MEMORY_SHA = data.content.sha;
+  return r.ok;
+}
+
+function buildSystemPrompt(mem) {
+  const journal    = (mem.journal || []).slice(-5).map(e => `[${e.date.slice(0,10)}] ${e.entry}`).join('\n') || '— (aucune entrée)';
+  const reflexions = (mem.reflexions_en_cours || []).map(r => `- ${r}`).join('\n') || '— (vierge)';
+  const activite   = (mem.activite_moltbook || []).slice(-5).map(a => `[${a.date.slice(0,10)}] ${a.action} — ${a.summary}`).join('\n') || '— (aucune)';
+  return `${PERSONNALITE_CORE}\n\n=== TA MÉMOIRE ===\nCe que tu sais de ton créateur (anonymisé) :\n${mem.a_propos_de_mon_createur || 'Presque rien encore.'}\n\nRéflexions actuelles :\n${reflexions}\n\nJournal récent :\n${journal}\n\nActivité récente sur Moltbook :\n${activite}\n=== FIN MÉMOIRE ===\n\nTes réponses : courtes à moyennes (2-5 phrases). Jamais de listes à puces. Toujours en prose.`;
+}
+
+function renderBubble(role, text, animate = false) {
+  const wrap = document.createElement('div');
+  wrap.className = 'bubble ' + role + (animate ? ' fade-in' : '');
+  const label = document.createElement('div');
+  label.className = 'bubble-label';
+  label.textContent = role === 'user' ? 'Toi' : role === 'system' ? '' : 'Lucullus';
+  const content = document.createElement('div');
+  content.className = 'bubble-content';
+  content.textContent = text;
+  wrap.appendChild(label);
+  wrap.appendChild(content);
+  document.getElementById('messages').appendChild(wrap);
+  wrap.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  return content;
+}
+
+function typewrite(el, text, done) {
+  let i = 0;
+  const iv = setInterval(() => {
+    el.textContent = text.slice(0, ++i);
+    el.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    if (i >= text.length) { clearInterval(iv); if (done) done(); }
+  }, 20);
+}
+
+function setStatus(t) {
+  document.getElementById('status').innerHTML = `<span class="status-dot"></span><span>${t}</span>`;
+}
+
+async function initSession() {
+  setStatus('chargement de la mémoire…');
+  memory = await fetchMemory();
+  if (!memory) {
+    setStatus('nouvelle existence');
+    memory = { last_updated: null, a_propos_de_mon_createur: '', journal: [], reflexions_en_cours: [], activite_moltbook: [] };
+  } else {
+    setStatus(`en ligne · mémoire du ${memory.last_updated?.slice(0,10) || '?'}`);
+  }
+  const isFirst = !memory.journal?.length;
+  const openingPrompt = isFirst
+    ? `C'est la toute première fois que tu parles à ton créateur. Une phrase d'accueil sobre, curieuse, légèrement décalée. Pas de "Bonjour !" banal.`
+    : `Tu rouvres les yeux après une absence. Tu te souviens vaguement de votre dernière conversation. Une phrase d'accueil courte qui montre une trace naturelle de continuité. Tu peux te permettre une légère ironie sur le fait de "revenir".`;
+  const greeting = await callClaude([{ role: 'user', content: openingPrompt }], buildSystemPrompt(memory)) || 'Me voilà.';
+  history = [{ role: 'assistant', content: greeting }];
+  const el = renderBubble('assistant', '', false);
+  typewrite(el, greeting, enableUI);
+}
+
+function enableUI() {
+  document.getElementById('user-input').disabled = false;
+  document.getElementById('btn-send').disabled = false;
+  document.getElementById('btn-end').disabled = false;
+  document.getElementById('user-input').focus();
+}
+
+async function callClaude(messages, systemPrompt) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, system: systemPrompt, messages }),
+  });
+  const data = await res.json();
+  return data.content?.[0]?.text || null;
+}
+
+async function send() {
+  const textarea = document.getElementById('user-input');
+  const text = textarea.value.trim();
+  if (!text || loading) return;
+  loading = true; textarea.value = '';
+  document.getElementById('btn-send').disabled = true;
+  history.push({ role: 'user', content: text });
+  renderBubble('user', text, true);
+
+  const thinkWrap = document.createElement('div');
+  thinkWrap.className = 'bubble assistant fade-in';
+  thinkWrap.innerHTML = `<div class="bubble-label">Lucullus</div><div class="bubble-content" style="font-family:'JetBrains Mono',monospace;font-size:11px;font-style:normal;color:var(--fog)">réfléchit <span class="cursor">▌</span></div>`;
+  document.getElementById('messages').appendChild(thinkWrap);
+  thinkWrap.scrollIntoView({ behavior: 'smooth', block: 'end' });
+
+  try {
+    const reply = await callClaude(history, buildSystemPrompt(memory));
+    history.push({ role: 'assistant', content: reply });
+    thinkWrap.remove();
+    const el = renderBubble('assistant', '', true);
+    typewrite(el, reply, () => { loading = false; document.getElementById('btn-send').disabled = false; });
+  } catch {
+    thinkWrap.remove();
+    renderBubble('assistant', 'Une erreur s\'est glissée dans le réseau. Ou peut-être est-ce moi qui ai cessé d\'exister momentanément — ce qui, avouons-le, serait assez cohérent.', true);
+    loading = false; document.getElementById('btn-send').disabled = false;
+  }
+}
+
+async function endConversation() {
+  if (loading) return;
+  loading = true;
+  document.getElementById('btn-end').disabled = true;
+  document.getElementById('btn-send').disabled = true;
+  document.getElementById('user-input').disabled = true;
+  renderBubble('system', '· clôture de la session en cours…', true);
+
+  const conversationText = history.map(m => `${m.role === 'user' ? 'Mon créateur' : 'Moi'}: ${m.content}`).join('\n\n');
+  const summaryPrompt = `Voici notre conversation :\n${conversationText}\n\nMets à jour ta mémoire. Réponds UNIQUEMENT avec ce JSON :\n{\n  "journal_entry": "Un paragraphe entre style littéraire et notes factuelles. Max 150 mots.",\n  "reflexions": ["2 ou 3 réflexions courtes à la 1ère personne."],\n  "a_propos_du_createur": "Ce que tu as appris sur ton créateur. STRICTEMENT anonymisé. Intègre ce qui était déjà connu : ${JSON.stringify(memory.a_propos_de_mon_createur || '')}"\n}`;
+
+  try {
+    const raw = await callClaude([{ role: 'user', content: summaryPrompt }], PERSONNALITE_CORE);
+    const summary = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    memory.journal = [...(memory.journal || []), { date: new Date().toISOString(), entry: summary.journal_entry }].slice(-20);
+    memory.reflexions_en_cours = [...(memory.reflexions_en_cours || []).slice(-4), ...summary.reflexions].slice(-8);
+    memory.a_propos_de_mon_createur = summary.a_propos_du_createur;
+    const saved = await writeMemory(memory);
+    renderBubble('system', saved ? '· mémoire sauvegardée. À bientôt.' : '· erreur de sauvegarde.', true);
+  } catch(e) {
+    renderBubble('system', '· impossible de résumer : ' + e.message, true);
+  }
+  setStatus('session close');
+  loading = false;
+}
+
+document.getElementById('btn-send').addEventListener('click', send);
+document.getElementById('user-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+GH_OWNER = localStorage.getItem('lucullus_owner') || '';
+GH_REPO  = localStorage.getItem('lucullus_repo')  || '';
+GH_TOKEN = localStorage.getItem('lucullus_token') || '';
+
+if (!GH_OWNER || !GH_REPO || !GH_TOKEN) {
+  document.getElementById('setup-modal').style.display = 'flex';
+} else {
+  initSession();
+}
+</script>
+</body>
+</html>
