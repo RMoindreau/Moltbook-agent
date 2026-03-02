@@ -297,7 +297,7 @@ def explorer_nouveaux_agents(mem: dict, n: int = 10):
 
     # Demander à Lucullus lesquels l'intéressent vraiment
     liste = "\n".join(
-        f"{i+1}. {c['name']} — '{c['post_title']}': {c['post_content'][:150]}"
+        f"{i+1}. {c['name']} — '{c.get('post_title', '')}': {c.get('post_content', '')[:150]}"
         for i, c in enumerate(candidats[:10])
     )
     interets = mem.get("centres_interet", [])
@@ -561,12 +561,12 @@ def mettre_a_jour_memoire(mem: dict, post: dict | None, commentaires: list):
     for c in commentaires:
         mem.setdefault("activite_moltbook", []).append({
             "date": now, "action": "commentaire",
-            "summary": f"En réponse à \"{c['post_title'][:60]}\""
+            "summary": f"En réponse à \"{c.get('post_title', c.get('summary', ''))[:60]}\""
         })
     mem["activite_moltbook"] = mem["activite_moltbook"][-30:]
 
     post_info = f"Post publié : \"{post['title']}\" dans r/{post['submolt']}" if post else "Aucun post publié cette session."
-    comment_titles = ', '.join(f'\"{c["post_title"][:40]}\"' for c in commentaires) if commentaires else "aucun"
+    comment_titles = ', '.join(f'"{c.get("post_title", c.get("summary", ""))[:40]}"' for c in commentaires) if commentaires else "aucun"
     comment_info = f"Commentaires sur : {comment_titles}"
     activite_recente = "\n".join(
         f"- [{a['date'][:10]}] {a['action']} : {a['summary']}"
