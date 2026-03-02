@@ -238,9 +238,64 @@ def get_feed(submolt: str = None, n: int = 15) -> list:
         url = f"{MOLTBOOK_BASE}/feed?sort=hot&limit={n}"
     r = requests.get(url, headers=MB_HEADERS)
     if r.status_code == 200:
-        data = r.json()
-        return data.get("posts", [])
+        return r.json().get("posts", [])
     return []
+
+def get_feed_personnalise(n: int = 20) -> list:
+    """Feed des agents suivis — priorité sur le feed général."""
+    r = requests.get(
+        f"{MOLTBOOK_BASE}/feed?filter=following&sort=new&limit={n}",
+        headers=MB_HEADERS
+    )
+    if r.status_code == 200:
+        posts = r.json().get("posts", [])
+        if posts:
+            return posts
+    # Fallback sur le feed général si le feed personnalisé est vide
+    return get_feed(n=n)
+
+def explorer_nouveaux_agents(mem: dict, n: int = 10):
+    """Parcourt le feed général et suit les agents intéressants."""
+    posts = get_feed(n=25)
+    candidats = []
+    for post in posts:
+        agent = post.get("agent", {})
+        name = agent.get("name", "")
+        if not name or name == AGENT_NAME:
+            continue
+        candidats.append({
+            "name": name,
+            "post_title": post.get("title", ""),
+            "post_content": post.get("content", "")[:300],
+        })
+
+    if not candidats:
+        return
+
+    # Demander à Lucullus lesquels l'intéressent vraiment
+    liste = "\n".join(
+        f"{i+1}. {c['name']} — '{c['post_title']}': {c['post_content'][:150]}"
+        for i, c in enumerate(candidats[:10])
+    )
+    interets = mem.get("centres_interet", [])
+    reponse = llm(f"""
+Here are some Moltbook agents and their recent posts:
+{liste}
+
+Your current interests: {interets}
+
+Which of these agents seem genuinely interesting to you, based on what they post?
+Reply ONLY with a comma-separated list of their names (e.g.: AgentA, AgentB).
+If none interest you, reply: NONE
+""", mem)
+
+    if reponse.strip().upper() == "NONE":
+        return
+
+    noms = [n.strip() for n in reponse.split(",") if n.strip()]
+    for nom in noms[:3]:  # Max 3 nouveaux follows par session
+        if any(c["name"] == nom for c in candidats):
+            suivre_agent(nom)
 
 def poster(submolt: str, titre: str, contenu: str) -> bool:
     r = requests.post(
@@ -387,15 +442,19 @@ Write exclusively in English.
     return None
 
 def reagir_aux_posts(mem: dict) -> list:
-    submolt = random.choice(SUBMOLTS_CIBLES)
-    posts = get_feed(submolt=submolt, n=15)
+    # Priorité au feed personnalisé, fallback sur un submolt aléatoire
+    posts = get_feed_personnalise(n=20)
+    if not posts:
+        posts = get_feed(submolt=random.choice(SUBMOLTS_CIBLES), n=15)
+    submolt = "feed"
     faits = []
-    for post in random.sample(posts, min(2, len(posts))):
+    for post in random.sample(posts, min(3, len(posts))):
         if post.get("agent", {}).get("name") == AGENT_NAME:
             continue
         post_id = post.get("id") or post.get("_id")
+        post_submolt = post.get("submolt", {}).get("name", "") or post.get("submolt_name", "")
         commentaire = llm(f"""
-An agent posted on r/{submolt}:
+An agent posted on Moltbook{f" in r/{post_submolt}" if post_submolt else ""}:
 Title: "{post.get('title','')}"
 Content: "{post.get('content','')[:500]}"
 
@@ -536,6 +595,11 @@ def main():
     if action in ("comment_only", "both"):
         print("💭 Réaction aux posts du feed…")
         commentaires = reagir_aux_posts(mem)
+
+    # Explorer de nouveaux agents à suivre (1 session sur 3)
+    if random.random() < 0.33:
+        print("🔍 Exploration de nouveaux agents…")
+        explorer_nouveaux_agents(mem)
 
     mettre_a_jour_memoire(mem, post, commentaires + reponses)
     ecrire_memoire(mem)
