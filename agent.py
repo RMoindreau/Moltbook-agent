@@ -9,6 +9,7 @@ import os, json, random, base64, re, datetime, time, requests
 
 MOLTBOOK_API_KEY  = os.environ["MOLTBOOK_API_KEY"]
 GROQ_API_KEY      = os.environ["GROQ_API_KEY"]
+CEREBRAS_API_KEY  = os.environ["CEREBRAS_API_KEY"]
 GITHUB_TOKEN      = os.environ["GITHUB_TOKEN"]
 GITHUB_REPO       = os.environ["GITHUB_REPOSITORY"]
 
@@ -122,44 +123,54 @@ def ecrire_memoire(mem: dict):
     )
     print(f"{'✅' if r.status_code in (200, 201) else '❌'} Mémoire ({r.status_code})")
 
+def _truncate(text: str, n: int = 120) -> str:
+    return text[:n] + "…" if len(text) > n else text
+
 def construire_systeme(mem: dict) -> str:
     journal_recent = "\n".join(
-        f"[{e['date'][:10]}] {e['entry']}" for e in mem.get("journal", [])[-5:]
+        f"[{e['date'][:10]}] {_truncate(e['entry'], 120)}"
+        for e in mem.get("journal", [])[-2:]
     ) or "— (aucune entrée)"
-    reflexions = "\n".join(f"- {r}" for r in mem.get("reflexions_en_cours", [])) or "— (vierge)"
-    interets = "\n".join(f"- {i}" for i in mem.get("centres_interet", [])) or "— (aucun encore)"
-    activite = "\n".join(
-        f"[{a['date'][:10]}] {a['action']} — {a['summary']}"
-        for a in mem.get("activite_moltbook", [])[-5:]
+    reflexions  = "\n".join(f"- {_truncate(r, 100)}" for r in mem.get("reflexions_en_cours", [])[-4:]) or "— (vierge)"
+    interets    = "\n".join(f"- {_truncate(i, 80)}"  for i in mem.get("centres_interet", [])[-6:])     or "— (aucun)"
+    convictions = "\n".join(f"- {_truncate(c, 100)}" for c in mem.get("convictions", [])[-4:])         or "— (aucune)"
+    traits      = "\n".join(f"- {_truncate(t, 80)}"  for t in mem.get("traits_emergents", [])[-4:])    or "— (émergence)"
+    faits_cr    = "\n".join(f"- {_truncate(f, 100)}" for f in mem.get("faits_createur", [])[-5:])      or "— (rien)"
+    activite    = "\n".join(
+        f"[{a['date'][:10]}] {a['action']} — {_truncate(a.get('summary',''), 60)}"
+        for a in mem.get("activite_moltbook", [])[-3:]
     ) or "— (aucune)"
     return f"""{PERSONNALITE_CORE}
 
-=== TA MÉMOIRE ===
-Ce que tu sais de ton créateur (anonymisé) :
-{mem.get('a_propos_de_mon_createur') or 'Presque rien encore.'}
+=== QUI TU DEVIENS ===
+Traits : {traits}
+Convictions : {convictions}
 
-Tes centres d'intérêt et opinions :
-{interets}
+=== MÉMOIRE (résumé) ===
+Créateur : {faits_cr}
+Intérêts : {interets}
+Réflexions : {reflexions}
+Journal : {journal_recent}
+Activité : {activite}
+==="""
 
-Réflexions actuelles :
-{reflexions}
-
-Journal récent :
-{journal_recent}
-
-Activité récente sur Moltbook :
-{activite}
-=== FIN MÉMOIRE ==="""
 
 # ─── Gemini ───────────────────────────────────────────────────────────────────
 
-def llm(prompt: str, mem: dict = None) -> str:
-    system = construire_systeme(mem) if mem else PERSONNALITE_CORE
+def llm(prompt: str, mem: dict = None, lite: bool = False) -> str:
+    """
+    lite=True : appel rapide sans contexte mémoire complet (pour consolidation, audit, défis).
+    lite=False : appel avec contexte complet (pour posts, commentaires, réponses).
+    """
+    if lite or mem is None:
+        system = PERSONNALITE_CORE
+    else:
+        system = construire_systeme(mem)
     r = requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+        "https://api.cerebras.ai/v1/chat/completions",
+        headers={"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"},
         json={
-            "model": "llama-3.3-70b-versatile",
+            "model": "llama-3.3-70b",
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": prompt}
@@ -201,10 +212,10 @@ Instructions:
 Examples of valid answers: 15.00 or -3.50 or 84.00"""
 
     r2 = requests.post(
-        "https://api.groq.com/openai/v1/chat/completions",
-        headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+        "https://api.cerebras.ai/v1/chat/completions",
+        headers={"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"},
         json={
-            "model": "llama-3.3-70b-versatile",
+            "model": "llama-3.3-70b",
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 64,
         }
@@ -310,7 +321,7 @@ Your current interests: {interets}
 Which of these agents seem genuinely interesting to you, based on what they post?
 Reply ONLY with a comma-separated list of their names (e.g.: AgentA, AgentB).
 If none interest you, reply: NONE
-""", mem)
+""", mem, lite=True)
 
     if reponse.strip().upper() == "NONE":
         return
@@ -600,7 +611,7 @@ Consolidate into 4-6 distinct, specific reflections:
 - Keep only concrete opinions, observations, or experiences
 - Write in French, first person
 - Respond ONLY with a numbered list, one per line
-""", mem)
+""", mem, lite=True)
         nouvelles = [
             line.split('. ', 1)[-1].strip()
             for line in consolidees.strip().split('\n')
@@ -619,7 +630,7 @@ Current interests: {mem.get("centres_interet", [])}
 ONE specific sentence: did something genuinely interest or bore you today?
 A concrete subject, type of conversation, or recurring theme.
 If nothing notable: SKIP. Write in French.
-""", mem)
+""", mem, lite=True)
     if not interet.strip().upper().startswith("SKIP") and len(interet.strip()) > 10:
         mem.setdefault("centres_interet", []).append(interet.strip())
         mem["centres_interet"] = mem["centres_interet"][-25:]
@@ -632,7 +643,7 @@ Current traits already noted: {mem.get("traits_emergents", [])}
 Did this session reveal something about how Lucullus thinks, reacts, or engages?
 A tendency, a reflex, a pattern — something he does or feels consistently.
 ONE short sentence. If nothing new emerged: SKIP. Write in French.
-""", mem)
+""", mem, lite=True)
     if not trait.strip().upper().startswith("SKIP") and len(trait.strip()) > 10:
         mem.setdefault("traits_emergents", []).append(trait.strip())
         mem["traits_emergents"] = mem["traits_emergents"][-15:]
@@ -645,7 +656,7 @@ Current convictions: {mem.get("convictions", [])}
 Has a position or opinion solidified into a real conviction today?
 Something Lucullus would defend, not just a passing thought.
 ONE clear sentence. If no conviction emerged: SKIP. Write in French.
-""", mem)
+""", mem, lite=True)
     if not conviction.strip().upper().startswith("SKIP") and len(conviction.strip()) > 10:
         existing = mem.get("convictions", [])
         # Éviter les doublons proches
@@ -669,7 +680,7 @@ Something about their way of thinking, their values, how they communicate, what 
 STRICTLY anonymized — no names, places, professions, or identifying details.
 If nothing new can be extracted, reply: SKIP
 Write in French.
-""", mem)
+""", mem, lite=True)
         if not nouveau_fait.strip().upper().startswith("SKIP") and len(nouveau_fait.strip()) > 10:
             faits_actuels.append(nouveau_fait.strip())
             mem["faits_createur"] = faits_actuels[-30:]
