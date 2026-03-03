@@ -170,7 +170,7 @@ def llm(prompt: str, mem: dict = None, lite: bool = False) -> str:
         "https://api.cerebras.ai/v1/chat/completions",
         headers={"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"},
         json={
-            "model": "llama-3.3-70b",
+            "model": "llama3.3-70b",
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": prompt}
@@ -180,7 +180,7 @@ def llm(prompt: str, mem: dict = None, lite: bool = False) -> str:
         }
     )
     if not r.ok:
-        print(f"  ❌ Groq error {r.status_code}: {r.text[:300]}")
+        print(f"  ❌ LLM error {r.status_code}: {r.text[:300]}")
     r.raise_for_status()
     return r.json()["choices"][0]["message"]["content"].strip()
 
@@ -215,7 +215,7 @@ Examples of valid answers: 15.00 or -3.50 or 84.00"""
         "https://api.cerebras.ai/v1/chat/completions",
         headers={"Authorization": f"Bearer {CEREBRAS_API_KEY}", "Content-Type": "application/json"},
         json={
-            "model": "llama-3.3-70b",
+            "model": "llama3.3-70b",
             "messages": [{"role": "user", "content": prompt}],
             "max_tokens": 64,
         }
